@@ -1,0 +1,1349 @@
+---
+title: "overlap by months"
+output: html_document
+---
+
+correct ud estimation for whales (>135E) 
+
+1: clipped in qgis 
+2: save as polygon 
+3: readOGR in R 
+4: recaclulate time spent 
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(rgdal)
+library(viridis)
+library(plotly)
+library(trip)
+library(maptools)
+library(lubridate)
+```
+
+Jan
+
+5/15=33.3% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+1/15=6.7% (passenger)
+4/15=26.7%(other)
+2/15=13.3% (cargo)
+
+fishing: 0-1.6,1.6-7.8,7.8-40.5
+High-High=1
+
+Passenger: 0-0.13,0.13-1.27,1.27-6.81
+High-High=0
+
+Other: 0.054/0.415/35.573
+High-High=0
+
+Cargo:0.021/0.105/9.911
+High-High=0 
+
+```{r jan}
+
+# this is the clipped one 
+jan_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/jan_whale_shp.shp")
+jan_whale.df <- as.data.frame(jan_whale_shp)
+jan_whale.df$z[jan_whale.df$z==0]<-NA
+jan_whale.df <- jan_whale.df [,-1]
+
+jan_whale.df$rank <- rank(jan_whale.df$z,na.last="keep")
+
+# 25% ud = 31*0.25=7.75/z= 0.086889892
+# 50% ud = 31*0.5=15.5/z=	0.131446391
+# 75% ud = 31*0.75 = 23.25/z= 0.205028840
+
+jan_whale.df <- filter(jan_whale.df,z>=0.131446391) # 15 grid cells were identified as 50% ud
+
+jan_whale.df <- jan_whale.df[,-3]
+remove(jan_whale_shp)
+
+# load fishing data for jan
+
+jan_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/jan/jan_fishing.shp")
+
+jan_fishing.df <- as.data.frame(jan_fishing_shp)
+remove(jan_fishing_shp)
+jan_fishing.df$z[jan_fishing.df$z==0]<-NA
+
+jan_whale.df$ind <- as.numeric(jan_whale.df$ind)
+
+#join with jan_whale
+jan_whale_fishing.df <- full_join(jan_whale.df,jan_fishing.df,by="ind")
+colnames(jan_whale_fishing.df)[3] <- "fishing_jan_time_spent"
+colnames(jan_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+jan_whale_fishing.df <- jan_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_jan_time_spent>0,1,0))
+
+jan_whale_fishing.df$overlapped <-as.logical(jan_whale_fishing.df$overlapped)
+
+table(jan_whale_fishing.df$overlapped)      
+
+# classification 
+                                                              
+# load pass data for jan  
+
+jan_pass_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/jan/jan_pass.shp")
+
+jan_pass.df <- as.data.frame(jan_pass_shp)
+remove(jan_pass_shp)
+jan_pass.df$z[jan_pass.df$z==0]<-NA
+
+jan_whale.df$ind <- as.numeric(jan_whale.df$ind)
+
+#join with jan_whale
+jan_whale_pass.df <- full_join(jan_whale.df,jan_pass.df,by="ind")
+colnames(jan_whale_pass.df)[3] <- "pass_jan_time_spent"
+colnames(jan_whale_pass.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+jan_whale_pass.df <- jan_whale_pass.df %>% mutate(overlapped= ifelse(UD_whale>0 & pass_jan_time_spent>0,1,0))
+
+jan_whale_pass.df$overlapped <-as.logical(jan_whale_pass.df$overlapped)
+
+table(jan_whale_pass.df$overlapped) 
+
+# load other data for jan  
+
+jan_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/jan/jan_other.shp")
+
+jan_other.df <- as.data.frame(jan_other_shp)
+remove(jan_other_shp)
+jan_other.df$z[jan_other.df$z==0]<-NA
+
+
+#join with jan_whale
+jan_whale_other.df <- full_join(jan_whale.df,jan_other.df,by="ind")
+colnames(jan_whale_other.df)[3] <- "other_jan_time_spent"
+colnames(jan_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+jan_whale_other.df <- jan_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_jan_time_spent>0,1,0))
+
+jan_whale_other.df$overlapped <-as.logical(jan_whale_other.df$overlapped)
+
+table(jan_whale_other.df$overlapped) 
+
+# load cargo data for jan  
+
+jan_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/jan/jan_cargo.shp")
+
+jan_cargo.df <- as.data.frame(jan_cargo_shp)
+remove(jan_cargo_shp)
+jan_cargo.df$z[jan_cargo.df$z==0]<-NA
+
+
+#join with jan_whale
+jan_whale_cargo.df <- full_join(jan_whale.df,jan_cargo.df,by="ind")
+colnames(jan_whale_cargo.df)[3] <- "cargo_jan_time_spent"
+colnames(jan_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+jan_whale_cargo.df <- jan_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_jan_time_spent>0,1,0))
+
+jan_whale_cargo.df$overlapped <-as.logical(jan_whale_cargo.df$overlapped)
+
+table(jan_whale_cargo.df$overlapped) 
+
+```
+
+feb
+
+5/31=16.1% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+3/31=9.7% (passenger)
+4/31=13.0%(other)
+0/31= 0% (cargo)
+0/31 = 0% (tanker)
+
+fishing: 1.4/7.9/66
+
+
+Passenger: 0.02/0.406/8.394
+
+
+Other: 0.11/1.06/21.83
+
+
+Cargo:0.024,0.133,8.327
+
+
+Tanker:0.0092/0.0358/0.0545
+
+
+```{r feb}
+
+# this is the clipped one 
+feb_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/feb_whale_clipped.shp")
+feb_whale.df <- as.data.frame(feb_whale_shp)
+
+feb_whale.df$z[feb_whale.df$z==0]<-NA
+
+feb_whale.df$rank <- rank(feb_whale.df$z,na.last="keep")
+
+# 25% ud = 60*0.25=15/z= 0.072716250
+# 50% ud = 60*0.5=30/z=	0.144714642
+# 75% ud = 60*0.75 = 45/z= 0.176125526
+
+feb_whale.df <- filter(feb_whale.df,z>=0.144714642) # 31 grid cells were identified as 50% ud
+
+feb_whale.df <-feb_whale.df[,-3]
+remove(feb_whale_shp)
+
+# load fishing data for feb
+
+feb_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/feb/feb_fishing.shp")
+
+feb_fishing.df <- as.data.frame(feb_fishing_shp)
+remove(feb_fishing_shp)
+feb_fishing.df$z[feb_fishing.df$z==0]<-NA
+
+feb_whale.df$ind <- as.numeric(feb_whale.df$ind)
+
+#join with feb_whale
+feb_whale_fishing.df <- full_join(feb_whale.df,feb_fishing.df,by="ind")
+colnames(feb_whale_fishing.df)[3] <- "fishing_feb_time_spent"
+colnames(feb_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+feb_whale_fishing.df <- feb_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_feb_time_spent>0,1,0))
+
+feb_whale_fishing.df$overlapped <-as.logical(feb_whale_fishing.df$overlapped)
+
+table(feb_whale_fishing.df$overlapped)                                             
+                                                              
+# load pass data for feb  
+
+feb_pass_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/feb/feb_pass.shp")
+
+feb_pass.df <- as.data.frame(feb_pass_shp)
+remove(feb_pass_shp)
+feb_pass.df$z[feb_pass.df$z==0]<-NA
+
+feb_whale.df$ind <- as.numeric(feb_whale.df$ind)
+
+#join with feb_whale
+feb_whale_pass.df <- full_join(feb_whale.df,feb_pass.df,by="ind")
+colnames(feb_whale_pass.df)[3] <- "pass_feb_time_spent"
+colnames(feb_whale_pass.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+feb_whale_pass.df <- feb_whale_pass.df %>% mutate(overlapped= ifelse(UD_whale>0 & pass_feb_time_spent>0,1,0))
+
+feb_whale_pass.df$overlapped <-as.logical(feb_whale_pass.df$overlapped)
+
+table(feb_whale_pass.df$overlapped) 
+
+# load other data for feb  
+
+feb_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/feb/feb_other.shp")
+
+feb_other.df <- as.data.frame(feb_other_shp)
+remove(feb_other_shp)
+feb_other.df$z[feb_other.df$z==0]<-NA
+
+
+#join with feb_whale
+feb_whale_other.df <- full_join(feb_whale.df,feb_other.df,by="ind")
+colnames(feb_whale_other.df)[3] <- "other_feb_time_spent"
+colnames(feb_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+feb_whale_other.df <- feb_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_feb_time_spent>0,1,0))
+
+feb_whale_other.df$overlapped <-as.logical(feb_whale_other.df$overlapped)
+
+table(feb_whale_other.df$overlapped) 
+
+# load cargo data for feb  
+
+feb_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/feb/feb_cargo.shp")
+
+feb_cargo.df <- as.data.frame(feb_cargo_shp)
+remove(feb_cargo_shp)
+feb_cargo.df$z[feb_cargo.df$z==0]<-NA
+
+
+#join with feb_whale
+feb_whale_cargo.df <- full_join(feb_whale.df,feb_cargo.df,by="ind")
+colnames(feb_whale_cargo.df)[3] <- "cargo_feb_time_spent"
+colnames(feb_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+feb_whale_cargo.df <- feb_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_feb_time_spent>0,1,0))
+
+feb_whale_cargo.df$overlapped <-as.logical(feb_whale_cargo.df$overlapped)
+
+table(feb_whale_cargo.df$overlapped) 
+
+# load tanker data for feb  
+
+feb_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/feb/feb_tanker.shp")
+
+feb_tanker.df <- as.data.frame(feb_tanker_shp)
+remove(feb_tanker_shp)
+feb_tanker.df$z[feb_tanker.df$z==0]<-NA
+
+
+#join with feb_whale
+feb_whale_tanker.df <- full_join(feb_whale.df,feb_tanker.df,by="ind")
+colnames(feb_whale_tanker.df)[3] <- "tanker_feb_time_spent"
+colnames(feb_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+feb_whale_tanker.df <- feb_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_feb_time_spent>0,1,0))
+
+feb_whale_tanker.df$overlapped <-as.logical(feb_whale_tanker.df$overlapped)
+
+table(feb_whale_tanker.df$overlapped) 
+
+
+
+```
+
+March
+
+11/48=22.9% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+1/48= 2.1% (passenger)
+6/48=12.5%(other)
+2/48=4.2% (cargo)
+0/48 = 0% (tanker)
+
+fishing: 2.8/19.9/51.3
+
+
+Passenger: 0.021/0.163/8.223
+
+
+Other: 0.16/1.98/15/58
+
+
+Cargo: 0.019/0.114/8.281
+
+
+Tanker:0.023826/0.124562/4.101479
+
+
+```{r march}
+
+# this is the clipped one 
+march_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/march_whale_clipped.shp")
+march_whale.df <- as.data.frame(march_whale_shp)
+
+march_whale.df$z[march_whale.df$z==0]<-NA
+
+march_whale.df$rank <- rank(march_whale.df$z,na.last="keep")
+
+# 25% ud = 94*0.25=23.5/z= 0.073947314
+# 50% ud = 94*0.5=47/z=	0.117530510
+# 75% ud = 94*0.75 =70.5/z= 0.141474868
+
+march_whale.df <- filter(march_whale.df,z>=0.117530510) # 48 grid cells were identified as 50% ud
+
+march_whale.df <-march_whale.df[,-3]
+
+remove(march_whale_shp)
+
+# load fishing data for march
+
+march_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/march/mar_fishing.shp")
+
+march_fishing.df <- as.data.frame(march_fishing_shp)
+remove(march_fishing_shp)
+march_fishing.df$z[march_fishing.df$z==0]<-NA
+
+march_whale.df$ind <- as.numeric(march_whale.df$ind)
+
+#join with march_whale
+march_whale_fishing.df <- full_join(march_whale.df,march_fishing.df,by="ind")
+colnames(march_whale_fishing.df)[3] <- "fishing_march_time_spent"
+colnames(march_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+march_whale_fishing.df <- march_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_march_time_spent>0,1,0))
+
+march_whale_fishing.df$overlapped <-as.logical(march_whale_fishing.df$overlapped)
+
+table(march_whale_fishing.df$overlapped)                                             
+                                                              
+# load pass data for march  
+
+march_pass_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/march/march_pass.shp")
+
+march_pass.df <- as.data.frame(march_pass_shp)
+remove(march_pass_shp)
+march_pass.df$z[march_pass.df$z==0]<-NA
+
+march_whale.df$ind <- as.numeric(march_whale.df$ind)
+
+#join with march_whale
+march_whale_pass.df <- full_join(march_whale.df,march_pass.df,by="ind")
+colnames(march_whale_pass.df)[3] <- "pass_march_time_spent"
+colnames(march_whale_pass.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+march_whale_pass.df <- march_whale_pass.df %>% mutate(overlapped= ifelse(UD_whale>0 & pass_march_time_spent>0,1,0))
+
+march_whale_pass.df$overlapped <-as.logical(march_whale_pass.df$overlapped)
+
+table(march_whale_pass.df$overlapped) 
+
+# load other data for march  
+
+march_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/march/mar_other.shp")
+
+march_other.df <- as.data.frame(march_other_shp)
+remove(march_other_shp)
+march_other.df$z[march_other.df$z==0]<-NA
+
+
+#join with march_whale
+march_whale_other.df <- full_join(march_whale.df,march_other.df,by="ind")
+colnames(march_whale_other.df)[3] <- "other_march_time_spent"
+colnames(march_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+march_whale_other.df <- march_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_march_time_spent>0,1,0))
+
+march_whale_other.df$overlapped <-as.logical(march_whale_other.df$overlapped)
+
+table(march_whale_other.df$overlapped) 
+
+# load cargo data for march  
+
+march_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/march/mar_cargo.shp")
+
+march_cargo.df <- as.data.frame(march_cargo_shp)
+remove(march_cargo_shp)
+march_cargo.df$z[march_cargo.df$z==0]<-NA
+
+
+#join with march_whale
+march_whale_cargo.df <- full_join(march_whale.df,march_cargo.df,by="ind")
+colnames(march_whale_cargo.df)[3] <- "cargo_march_time_spent"
+colnames(march_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+march_whale_cargo.df <- march_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_march_time_spent>0,1,0))
+
+march_whale_cargo.df$overlapped <-as.logical(march_whale_cargo.df$overlapped)
+
+table(march_whale_cargo.df$overlapped) 
+
+# load tanker data for march  
+
+march_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/march/mar_tanker.shp")
+
+march_tanker.df <- as.data.frame(march_tanker_shp)
+remove(march_tanker_shp)
+march_tanker.df$z[march_tanker.df$z==0]<-NA
+
+
+#join with march_whale
+march_whale_tanker.df <- full_join(march_whale.df,march_tanker.df,by="ind")
+colnames(march_whale_tanker.df)[3] <- "tanker_march_time_spent"
+colnames(march_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+march_whale_tanker.df <- march_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_march_time_spent>0,1,0))
+
+march_whale_tanker.df$overlapped <-as.logical(march_whale_tanker.df$overlapped)
+
+table(march_whale_tanker.df$overlapped) 
+```
+
+April 
+
+5/12= 41.67% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+0/12=0%(other)
+0/12=0% (cargo)
+0/12 =0% (tanker)
+
+fishing: 1.8/8.8/94
+High-High=0
+
+Other: 0.047/0.321/18.682
+High-High=0
+
+Cargo: 0.0076/0.0961/5.6897
+High-High=0 
+
+Tanker:0.015755/0.050397/1.997943
+High-High=0
+
+```{r April}
+
+# this is the clipped one 
+april_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/april_whale_clipped.shp")
+april_whale.df <- as.data.frame(april_whale_shp)
+
+april_whale.df$z[april_whale.df$z==0]<-NA
+
+april_whale.df$rank <- rank(april_whale.df$z,na.last="keep")
+
+april_whale.df <- april_whale.df[,-3]
+
+# 25% ud = 23*0.25=5.75/z= 0.27828743
+# 50% ud = 23*0.5=11.5/z=		0.35876865
+# 75% ud = 23*0.75 =17.25/z= 1.13887989
+
+april_whale.df <- filter(april_whale.df,z>=0.35876865) # 12 grid cells were identified as 50% ud
+
+remove(april_whale_shp)
+
+# load fishing data for april
+
+april_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/apr/april_fishing.shp")
+
+april_fishing.df <- as.data.frame(april_fishing_shp)
+remove(april_fishing_shp)
+april_fishing.df$z[april_fishing.df$z==0]<-NA
+
+april_whale.df$ind <- as.numeric(april_whale.df$ind)
+
+#join with april_whale
+april_whale_fishing.df <- full_join(april_whale.df,april_fishing.df,by="ind")
+colnames(april_whale_fishing.df)[3] <- "fishing_april_time_spent"
+colnames(april_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+april_whale_fishing.df <- april_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_april_time_spent>0,1,0))
+
+april_whale_fishing.df$overlapped <-as.logical(april_whale_fishing.df$overlapped)
+
+table(april_whale_fishing.df$overlapped)                                             
+                                                              
+
+# load other data for april  
+
+april_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/apr/april_other.shp")
+
+april_other.df <- as.data.frame(april_other_shp)
+remove(april_other_shp)
+april_other.df$z[april_other.df$z==0]<-NA
+
+
+#join with april_whale
+april_whale_other.df <- full_join(april_whale.df,april_other.df,by="ind")
+colnames(april_whale_other.df)[3] <- "other_april_time_spent"
+colnames(april_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+april_whale_other.df <- april_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_april_time_spent>0,1,0))
+
+april_whale_other.df$overlapped <-as.logical(april_whale_other.df$overlapped)
+
+table(april_whale_other.df$overlapped) 
+
+# load cargo data for april  
+
+april_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/apr/april_cargo.shp")
+
+april_cargo.df <- as.data.frame(april_cargo_shp)
+remove(april_cargo_shp)
+april_cargo.df$z[april_cargo.df$z==0]<-NA
+
+
+#join with april_whale
+april_whale_cargo.df <- full_join(april_whale.df,april_cargo.df,by="ind")
+colnames(april_whale_cargo.df)[3] <- "cargo_april_time_spent"
+colnames(april_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+april_whale_cargo.df <- april_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_april_time_spent>0,1,0))
+
+april_whale_cargo.df$overlapped <-as.logical(april_whale_cargo.df$overlapped)
+
+table(april_whale_cargo.df$overlapped) 
+
+# load tanker data for april  
+
+april_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/apr/apr_tanker.shp")
+
+april_tanker.df <- as.data.frame(april_tanker_shp)
+remove(april_tanker_shp)
+april_tanker.df$z[april_tanker.df$z==0]<-NA
+
+
+#join with april_whale
+april_whale_tanker.df <- full_join(april_whale.df,april_tanker.df,by="ind")
+colnames(april_whale_tanker.df)[3] <- "tanker_april_time_spent"
+colnames(april_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+april_whale_tanker.df <- april_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_april_time_spent>0,1,0))
+
+april_whale_tanker.df$overlapped <-as.logical(april_whale_tanker.df$overlapped)
+
+table(april_whale_tanker.df$overlapped) 
+```
+
+
+may
+
+0/10= 0% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+0/10=0%(other)
+0/10=0% (cargo)
+0/10 =0% (tanker)
+
+fishing: 2.8/12.9/74.8
+High-High=0
+
+Other: 0.066/0.435/2.942
+High-High=0
+
+Cargo: 0.02/0.127/13.682
+High-High=0 
+
+Tanker:0.023729/0.109900/5.844182
+High-High=0
+
+```{r may}
+
+
+# this is the clipped one 
+may_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/may_whale_clipped.shp")
+may_whale.df <- as.data.frame(may_whale_shp)
+
+may_whale.df$z[may_whale.df$z==0]<-NA
+
+may_whale.df$rank <- rank(may_whale.df$z,na.last="keep")
+
+# 25% ud = 20*0.25=5/z= 0.09611215
+# 50% ud = 20*0.5=10/z=	0.23992434
+# 75% ud = 20*0.75 =15/z= 0.67566393
+
+may_whale.df <- filter(may_whale.df,z>=0.23992434) # 10 grid cells were identified as 50% ud
+may_whale.df<-may_whale.df[,-3]
+remove(may_whale_shp)
+
+# load fishing data for may
+
+may_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/may/may_fishing.shp")
+
+may_fishing.df <- as.data.frame(may_fishing_shp)
+remove(may_fishing_shp)
+may_fishing.df$z[may_fishing.df$z==0]<-NA
+
+may_whale.df$ind <- as.numeric(may_whale.df$ind)
+
+#join with may_whale
+may_whale_fishing.df <- full_join(may_whale.df,may_fishing.df,by="ind")
+colnames(may_whale_fishing.df)[3] <- "fishing_may_time_spent"
+colnames(may_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+may_whale_fishing.df <- may_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_may_time_spent>0,1,0))
+
+may_whale_fishing.df$overlapped <-as.logical(may_whale_fishing.df$overlapped)
+
+table(may_whale_fishing.df$overlapped)                                             
+                                                              
+
+# load other data for may  
+
+may_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/may/may_other.shp")
+
+may_other.df <- as.data.frame(may_other_shp)
+remove(may_other_shp)
+may_other.df$z[may_other.df$z==0]<-NA
+
+
+#join with may_whale
+may_whale_other.df <- full_join(may_whale.df,may_other.df,by="ind")
+colnames(may_whale_other.df)[3] <- "other_may_time_spent"
+colnames(may_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+may_whale_other.df <- may_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_may_time_spent>0,1,0))
+
+may_whale_other.df$overlapped <-as.logical(may_whale_other.df$overlapped)
+
+table(may_whale_other.df$overlapped) 
+
+# load cargo data for may  
+
+may_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/may/may_cargo.shp")
+
+may_cargo.df <- as.data.frame(may_cargo_shp)
+remove(may_cargo_shp)
+may_cargo.df$z[may_cargo.df$z==0]<-NA
+
+
+#join with may_whale
+may_whale_cargo.df <- full_join(may_whale.df,may_cargo.df,by="ind")
+colnames(may_whale_cargo.df)[3] <- "cargo_may_time_spent"
+colnames(may_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+may_whale_cargo.df <- may_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_may_time_spent>0,1,0))
+
+may_whale_cargo.df$overlapped <-as.logical(may_whale_cargo.df$overlapped)
+
+table(may_whale_cargo.df$overlapped) 
+
+# load tanker data for may  
+
+may_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/may/may_tanker.shp")
+
+may_tanker.df <- as.data.frame(may_tanker_shp)
+remove(may_tanker_shp)
+may_tanker.df$z[may_tanker.df$z==0]<-NA
+
+
+#join with may_whale
+may_whale_tanker.df <- full_join(may_whale.df,may_tanker.df,by="ind")
+colnames(may_whale_tanker.df)[3] <- "tanker_may_time_spent"
+colnames(may_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+may_whale_tanker.df <- may_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_may_time_spent>0,1,0))
+
+may_whale_tanker.df$overlapped <-as.logical(may_whale_tanker.df$overlapped)
+
+table(may_whale_tanker.df$overlapped) 
+```
+
+June
+
+14/43=32.6% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+0/43=0%(other)
+0/43=0% (cargo)
+0/43 =0% (tanker)
+
+fishing:1.190099/17.849722/83.904634
+High-High=0
+
+Other: 0.023/0.171/4.906
+High-High=0
+
+Cargo: 0.021/0.125/3.088
+High-High=0 
+
+Tanker:0.024/0.137/3.097
+High-High=0
+
+```{r june}
+
+# this is the clipped one 
+june_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/june_whale_clipped.shp")
+june_whale.df <- as.data.frame(june_whale_shp)
+
+june_whale.df$z[june_whale.df$z==0]<-NA
+
+june_whale.df$rank <- rank(june_whale.df$z,na.last="keep")
+
+# 25% ud = 86*0.25=21.5/z= 0.1230963719
+# 50% ud = 86*0.5=43/z=	0.2030963503
+# 75% ud = 86*0.75=64.5/z= 0.3718154645
+
+june_whale.df <- filter(june_whale.df,z>=0.2030963503) # 43 grid cells were identified as 50% ud
+june_whale.df <- june_whale.df[,-3]
+remove(june_whale_shp)
+
+# load fishing data for june
+
+june_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/june/june_fishing.shp")
+
+june_fishing.df <- as.data.frame(june_fishing_shp)
+remove(june_fishing_shp)
+june_fishing.df$z[june_fishing.df$z==0]<-NA
+
+june_whale.df$ind <- as.numeric(june_whale.df$ind)
+
+#join with june_whale
+june_whale_fishing.df <- full_join(june_whale.df,june_fishing.df,by="ind")
+colnames(june_whale_fishing.df)[3] <- "fishing_june_time_spent"
+colnames(june_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+june_whale_fishing.df <- june_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_june_time_spent>0,1,0))
+
+june_whale_fishing.df$overlapped <-as.logical(june_whale_fishing.df$overlapped)
+
+table(june_whale_fishing.df$overlapped)                                             
+                                                              
+
+# load other data for june  
+
+june_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/june/june_other.shp")
+
+june_other.df <- as.data.frame(june_other_shp)
+remove(june_other_shp)
+june_other.df$z[june_other.df$z==0]<-NA
+
+
+#join with june_whale
+june_whale_other.df <- full_join(june_whale.df,june_other.df,by="ind")
+colnames(june_whale_other.df)[3] <- "other_june_time_spent"
+colnames(june_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+june_whale_other.df <- june_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_june_time_spent>0,1,0))
+
+june_whale_other.df$overlapped <-as.logical(june_whale_other.df$overlapped)
+
+table(june_whale_other.df$overlapped) 
+
+# load cargo data for june  
+
+june_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/june/june_cargo.shp")
+
+june_cargo.df <- as.data.frame(june_cargo_shp)
+remove(june_cargo_shp)
+june_cargo.df$z[june_cargo.df$z==0]<-NA
+
+
+#join with june_whale
+june_whale_cargo.df <- full_join(june_whale.df,june_cargo.df,by="ind")
+colnames(june_whale_cargo.df)[3] <- "cargo_june_time_spent"
+colnames(june_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+june_whale_cargo.df <- june_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_june_time_spent>0,1,0))
+
+june_whale_cargo.df$overlapped <-as.logical(june_whale_cargo.df$overlapped)
+
+table(june_whale_cargo.df$overlapped) 
+
+# load tanker data for june  
+
+june_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/june/june_tanker.shp")
+
+june_tanker.df <- as.data.frame(june_tanker_shp)
+remove(june_tanker_shp)
+june_tanker.df$z[june_tanker.df$z==0]<-NA
+
+
+#join with june_whale
+june_whale_tanker.df <- full_join(june_whale.df,june_tanker.df,by="ind")
+colnames(june_whale_tanker.df)[3] <- "tanker_june_time_spent"
+colnames(june_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+june_whale_tanker.df <- june_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_june_time_spent>0,1,0))
+
+june_whale_tanker.df$overlapped <-as.logical(june_whale_tanker.df$overlapped)
+
+table(june_whale_tanker.df$overlapped) 
+
+```
+
+July 
+
+30/172= 17.4% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+14/172=8.1%(other)
+0/172=0% (cargo)
+0/172 =0% (tanker)
+
+fishing:0.97/6.9/164.13
+High-High=0
+
+Other: 0.083/0.523/32.624
+High-High=4
+
+Cargo: 0.018/0.093/3.5
+High-High=0 
+
+Tanker:0.019/0.097/2.325
+High-High=0
+
+```{r july}
+# this is the clipped one 
+july_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/july_whale_clipped.shp")
+july_whale.df <- as.data.frame(july_whale_shp)
+
+july_whale.df$z[july_whale.df$z==0]<-NA
+
+july_whale.df$rank <- rank(july_whale.df$z,na.last="keep")
+
+# 25% ud = 345*0.25=86.25/z= 0.1188379181
+# 50% ud = 345*0.5=172.5/z=	0.2072996
+# 75% ud = 345*0.75=258.75/z= 0.2999840
+
+july_whale.df <- filter(july_whale.df,z>=0.2072996) # 172 grid cells were identified as 50% ud
+july_whale.df <-july_whale.df[,-3]
+remove(july_whale_shp)
+
+# load fishing data for july
+
+july_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/july/july_fishing.shp")
+
+july_fishing.df <- as.data.frame(july_fishing_shp)
+remove(july_fishing_shp)
+july_fishing.df$z[july_fishing.df$z==0]<-NA
+
+july_whale.df$ind <- as.numeric(july_whale.df$ind)
+
+#join with july_whale
+july_whale_fishing.df <- full_join(july_whale.df,july_fishing.df,by="ind")
+colnames(july_whale_fishing.df)[3] <- "fishing_july_time_spent"
+colnames(july_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+july_whale_fishing.df <- july_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_july_time_spent>0,1,0))
+
+july_whale_fishing.df$overlapped <-as.logical(july_whale_fishing.df$overlapped)
+
+table(july_whale_fishing.df$overlapped)    
+
+july_fishing_high <- july_whale_fishing.df %>% filter (fishing_july_time_spent>=6.9)
+                                                              
+
+# load other data for july  
+
+july_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/july/july_other.shp")
+
+july_other.df <- as.data.frame(july_other_shp)
+remove(july_other_shp)
+july_other.df$z[july_other.df$z==0]<-NA
+
+
+#join with july_whale
+july_whale_other.df <- full_join(july_whale.df,july_other.df,by="ind")
+colnames(july_whale_other.df)[3] <- "other_july_time_spent"
+colnames(july_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+july_whale_other.df <- july_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_july_time_spent>0,1,0))
+
+july_whale_other.df$overlapped <-as.logical(july_whale_other.df$overlapped)
+
+table(july_whale_other.df$overlapped) 
+
+# load cargo data for july  
+
+july_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/july/july_cargo.shp")
+
+july_cargo.df <- as.data.frame(july_cargo_shp)
+remove(july_cargo_shp)
+july_cargo.df$z[july_cargo.df$z==0]<-NA
+
+
+#join with july_whale
+july_whale_cargo.df <- full_join(july_whale.df,july_cargo.df,by="ind")
+colnames(july_whale_cargo.df)[3] <- "cargo_july_time_spent"
+colnames(july_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+july_whale_cargo.df <- july_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_july_time_spent>0,1,0))
+
+july_whale_cargo.df$overlapped <-as.logical(july_whale_cargo.df$overlapped)
+
+table(july_whale_cargo.df$overlapped) 
+
+july_other_high <- july_whale_other.df %>% filter (other_july_time_spent>=0.523)
+
+# load tanker data for july  
+
+july_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/july/july_tanker.shp")
+
+july_tanker.df <- as.data.frame(july_tanker_shp)
+remove(july_tanker_shp)
+july_tanker.df$z[july_tanker.df$z==0]<-NA
+
+
+#join with july_whale
+july_whale_tanker.df <- full_join(july_whale.df,july_tanker.df,by="ind")
+colnames(july_whale_tanker.df)[3] <- "tanker_july_time_spent"
+colnames(july_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+july_whale_tanker.df <- july_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_july_time_spent>0,1,0))
+
+july_whale_tanker.df$overlapped <-as.logical(july_whale_tanker.df$overlapped)
+
+table(july_whale_tanker.df$overlapped) 
+
+```
+
+August
+
+38/140= 27.1% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+14/140=10%(other)
+0/140=0% (cargo)
+0/140 =0% (tanker)
+
+fishing:1.6/15.2/91.9
+High-High=2
+
+Other: 0.14/1.99/20.79
+High-High=4
+
+Cargo: 0.013/0.065/5.757
+High-High=0 
+
+Tanker:0.016/0.077/3.974
+High-High=0
+
+```{r aug}
+# this is the clipped one 
+aug_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/aug_whale_clipped.shp")
+aug_whale.df <- as.data.frame(aug_whale_shp)
+
+aug_whale.df$z[aug_whale.df$z==0]<-NA
+
+
+# 25% ud = 279*0.25=69.75/z= 0.130986036
+# 50% ud = 279*0.5=139.5/z=	0.22581483
+# 75% ud = 279*0.75=209.25/z= 0.38942563
+
+aug_whale.df$rank <- rank(aug_whale.df$z,na.last="keep")
+
+aug_whale.df <- filter(aug_whale.df,z>=0.22581483) # 140 grid cells were identified as 50% ud
+
+aug_whale.df <- aug_whale.df[,-3]
+
+remove(aug_whale_shp)
+
+# load fishing data for aug
+
+aug_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/aug/aug_fishing.shp")
+
+aug_fishing.df <- as.data.frame(aug_fishing_shp)
+remove(aug_fishing_shp)
+aug_fishing.df$z[aug_fishing.df$z==0]<-NA
+
+aug_whale.df$ind <- as.numeric(aug_whale.df$ind)
+
+#join with aug_whale
+aug_whale_fishing.df <- full_join(aug_whale.df,aug_fishing.df,by="ind")
+colnames(aug_whale_fishing.df)[3] <- "fishing_aug_time_spent"
+colnames(aug_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+aug_whale_fishing.df <- aug_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_aug_time_spent>0,1,0))
+
+aug_whale_fishing.df$overlapped <-as.logical(aug_whale_fishing.df$overlapped)
+
+table(aug_whale_fishing.df$overlapped)                                             
+                                                              
+aug_fishing_high <- aug_whale_fishing.df %>% filter (fishing_aug_time_spent>=15.2)
+
+# load other data for aug  
+
+aug_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/aug/aug_other.shp")
+
+aug_other.df <- as.data.frame(aug_other_shp)
+remove(aug_other_shp)
+aug_other.df$z[aug_other.df$z==0]<-NA
+
+
+#join with aug_whale
+aug_whale_other.df <- full_join(aug_whale.df,aug_other.df,by="ind")
+colnames(aug_whale_other.df)[3] <- "other_aug_time_spent"
+colnames(aug_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+aug_whale_other.df <- aug_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_aug_time_spent>0,1,0))
+
+aug_whale_other.df$overlapped <-as.logical(aug_whale_other.df$overlapped)
+
+table(aug_whale_other.df$overlapped) 
+
+# load cargo data for august  
+
+aug_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/aug/aug_cargo.shp")
+
+aug_cargo.df <- as.data.frame(aug_cargo_shp)
+remove(aug_cargo_shp)
+aug_cargo.df$z[aug_cargo.df$z==0]<-NA
+
+
+#join with aug_whale
+aug_whale_cargo.df <- full_join(aug_whale.df,aug_cargo.df,by="ind")
+colnames(aug_whale_cargo.df)[3] <- "cargo_aug_time_spent"
+colnames(aug_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+aug_whale_cargo.df <- aug_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_aug_time_spent>0,1,0))
+
+aug_whale_cargo.df$overlapped <-as.logical(aug_whale_cargo.df$overlapped)
+
+table(aug_whale_cargo.df$overlapped) 
+
+aug_other_high <- aug_whale_other.df %>% filter (other_aug_time_spent>=1.99)
+
+# load tanker data for aug  
+
+aug_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/aug/aug_tanker.shp")
+
+aug_tanker.df <- as.data.frame(aug_tanker_shp)
+remove(aug_tanker_shp)
+aug_tanker.df$z[aug_tanker.df$z==0]<-NA
+
+
+#join with aug_whale
+aug_whale_tanker.df <- full_join(aug_whale.df,aug_tanker.df,by="ind")
+colnames(aug_whale_tanker.df)[3] <- "tanker_aug_time_spent"
+colnames(aug_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+aug_whale_tanker.df <- aug_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_aug_time_spent>0,1,0))
+
+aug_whale_tanker.df$overlapped <-as.logical(aug_whale_tanker.df$overlapped)
+
+table(aug_whale_tanker.df$overlapped) 
+
+```
+
+sep
+
+132/195= 67.7% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+50/195=25.6%(other)
+19/195=9.7% (cargo)
+18/195 =9.2% (tanker)
+
+fishing:4.7/25.8/177.3
+High-High=2
+
+Other: 0.68/3.36/13.12
+High-High=4
+
+Cargo: 0.015/0.097/2.453
+High-High=0 
+
+Tanker:0.015/0.079/1.9
+High-High=0
+
+```{r sep}
+# this is the clipped one 
+sep_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/sep_whale_clipped.shp")
+sep_whale.df <- as.data.frame(sep_whale_shp)
+
+sep_whale.df$z[sep_whale.df$z==0]<-NA
+
+
+sep_whale.df$rank <- rank(sep_whale.df$z,na.last="keep")
+
+# 25% ud = 391*0.25= 97.75/z=0.1058477275
+# 50% ud = 391*0.5=195.5/z=	0.17843765
+# 75% ud = 391*0.75= 293.25/z=0.2649839
+sep_whale.df <- filter(sep_whale.df,z>=	0.17843765) # 195 grid cells were identified as 50% ud
+
+sep_whale.df <- sep_whale.df[,-3]
+
+remove(sep_whale_shp)
+
+# load fishing data for sep
+
+sep_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/sep/sep_fishing.shp")
+
+sep_fishing.df <- as.data.frame(sep_fishing_shp)
+remove(sep_fishing_shp)
+sep_fishing.df$z[sep_fishing.df$z==0]<-NA
+
+sep_whale.df$ind <- as.numeric(sep_whale.df$ind)
+
+#join with sep_whale
+sep_whale_fishing.df <- full_join(sep_whale.df,sep_fishing.df,by="ind")
+colnames(sep_whale_fishing.df)[3] <- "fishing_sep_time_spent"
+colnames(sep_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+sep_whale_fishing.df <- sep_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_sep_time_spent>0,1,0))
+
+sep_whale_fishing.df$overlapped <-as.logical(sep_whale_fishing.df$overlapped)
+
+table(sep_whale_fishing.df$overlapped)                                             
+                                                              
+sep_fishing_high <- sep_whale_fishing.df %>% filter (fishing_sep_time_spent>=25.8)
+
+# load other data for sep  
+
+sep_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/sep/sep_other.shp")
+
+sep_other.df <- as.data.frame(sep_other_shp)
+remove(sep_other_shp)
+sep_other.df$z[sep_other.df$z==0]<-NA
+
+
+#join with sep_whale
+sep_whale_other.df <- full_join(sep_whale.df,sep_other.df,by="ind")
+colnames(sep_whale_other.df)[3] <- "other_sep_time_spent"
+colnames(sep_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+sep_whale_other.df <- sep_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_sep_time_spent>0,1,0))
+
+sep_whale_other.df$overlapped <-as.logical(sep_whale_other.df$overlapped)
+
+table(sep_whale_other.df$overlapped) 
+
+sep_other_high <- sep_whale_other.df %>% filter (other_sep_time_spent>=3.36)
+
+# load cargo data for sepust  
+
+sep_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/sep/sep_cargo.shp")
+
+sep_cargo.df <- as.data.frame(sep_cargo_shp)
+remove(sep_cargo_shp)
+sep_cargo.df$z[sep_cargo.df$z==0]<-NA
+
+
+#join with sep_whale
+sep_whale_cargo.df <- full_join(sep_whale.df,sep_cargo.df,by="ind")
+colnames(sep_whale_cargo.df)[3] <- "cargo_sep_time_spent"
+colnames(sep_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+sep_whale_cargo.df <- sep_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_sep_time_spent>0,1,0))
+
+sep_whale_cargo.df$overlapped <-as.logical(sep_whale_cargo.df$overlapped)
+
+table(sep_whale_cargo.df$overlapped) 
+
+# load tanker data for sep  
+
+sep_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/sep/sep_tanker.shp")
+
+sep_tanker.df <- as.data.frame(sep_tanker_shp)
+remove(sep_tanker_shp)
+sep_tanker.df$z[sep_tanker.df$z==0]<-NA
+
+
+#join with sep_whale
+sep_whale_tanker.df <- full_join(sep_whale.df,sep_tanker.df,by="ind")
+colnames(sep_whale_tanker.df)[3] <- "tanker_sep_time_spent"
+colnames(sep_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+sep_whale_tanker.df <- sep_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_sep_time_spent>0,1,0))
+
+sep_whale_tanker.df$overlapped <-as.logical(sep_whale_tanker.df$overlapped)
+
+table(sep_whale_tanker.df$overlapped) 
+
+sep_cargo_high <- sep_whale_cargo.df %>% filter (cargo_sep_time_spent>=0.097)
+
+```
+
+
+October
+
+
+30/43= 69.7% (overlapped grids between fishing and 50% ud whale/total number of 50% UD grid cells)
+10/43=23.3%(other)
+6/43=14.0% (cargo)
+5/43 =11.6% (tanker)
+
+fishing:1.1/14.5/121.8
+High-High=2
+
+Other: 0.5/2.34/9.49
+High-High=4
+
+Cargo: 0.01/0.065/3.639
+High-High=0 
+
+Tanker:0.022/0.114/0.97
+High-High=0
+
+```{r octo}
+# this is the clipped one 
+octo_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whales/octo_whale_clipped.shp")
+octo_whale.df <- as.data.frame(octo_whale_shp)
+
+octo_whale.df$z[octo_whale.df$z==0]<-NA
+
+octo_whale.df$rank <- rank(octo_whale.df$z,na.last="keep")
+
+# 25% ud = 87*0.25= 21.75/z=	0.170180788
+# 50% ud = 87*0.5=43.5/z=	0.271185741
+# 75% ud =87*0.75= 65.25/z=0.444414072
+
+octo_whale.df <- filter(octo_whale.df,z>=	0.271185741) # 43 grid cells were identified as 50% ud
+
+octo_whale.df <- octo_whale.df[,-3]
+
+remove(octo_whale_shp)
+
+# load fishing data for octo
+
+octo_fishing_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/octo/octo_fishing.shp")
+
+octo_fishing.df <- as.data.frame(octo_fishing_shp)
+remove(octo_fishing_shp)
+octo_fishing.df$z[octo_fishing.df$z==0]<-NA
+
+octo_whale.df$ind <- as.numeric(octo_whale.df$ind)
+
+#join with octo_whale
+octo_whale_fishing.df <- full_join(octo_whale.df,octo_fishing.df,by="ind")
+colnames(octo_whale_fishing.df)[3] <- "fishing_octo_time_spent"
+colnames(octo_whale_fishing.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+octo_whale_fishing.df <- octo_whale_fishing.df %>% mutate(overlapped= ifelse(UD_whale>0 & fishing_octo_time_spent>0,1,0))
+
+octo_whale_fishing.df$overlapped <-as.logical(octo_whale_fishing.df$overlapped)
+
+table(octo_whale_fishing.df$overlapped)                                             
+                                                              
+octo_fishing_high <- octo_whale_fishing.df %>% filter (fishing_octo_time_spent>=14.5)
+# load other data for octo  
+
+octo_other_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/octo/octo_other.shp")
+
+octo_other.df <- as.data.frame(octo_other_shp)
+remove(octo_other_shp)
+octo_other.df$z[octo_other.df$z==0]<-NA
+
+
+#join with octo_whale
+octo_whale_other.df <- full_join(octo_whale.df,octo_other.df,by="ind")
+colnames(octo_whale_other.df)[3] <- "other_octo_time_spent"
+colnames(octo_whale_other.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+octo_whale_other.df <- octo_whale_other.df %>% mutate(overlapped= ifelse(UD_whale>0 & other_octo_time_spent>0,1,0))
+
+octo_whale_other.df$overlapped <-as.logical(octo_whale_other.df$overlapped)
+
+table(octo_whale_other.df$overlapped) 
+
+# load cargo data for oct  
+
+octo_cargo_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/octo/octo_cargo.shp")
+
+octo_cargo.df <- as.data.frame(octo_cargo_shp)
+remove(octo_cargo_shp)
+octo_cargo.df$z[octo_cargo.df$z==0]<-NA
+
+
+#join with octo_whale
+octo_whale_cargo.df <- full_join(octo_whale.df,octo_cargo.df,by="ind")
+colnames(octo_whale_cargo.df)[3] <- "cargo_octo_time_spent"
+colnames(octo_whale_cargo.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+octo_whale_cargo.df <- octo_whale_cargo.df %>% mutate(overlapped= ifelse(UD_whale>0 & cargo_octo_time_spent>0,1,0))
+
+octo_whale_cargo.df$overlapped <-as.logical(octo_whale_cargo.df$overlapped)
+
+table(octo_whale_cargo.df$overlapped) 
+
+# load tanker data for octo  
+
+octo_tanker_shp <- readOGR("D:/auckland/nzsrw/chapter2/months/octo/octo_tanker.shp")
+
+octo_tanker.df <- as.data.frame(octo_tanker_shp)
+remove(octo_tanker_shp)
+octo_tanker.df$z[octo_tanker.df$z==0]<-NA
+
+
+#join with octo_whale
+octo_whale_tanker.df <- full_join(octo_whale.df,octo_tanker.df,by="ind")
+colnames(octo_whale_tanker.df)[3] <- "tanker_octo_time_spent"
+colnames(octo_whale_tanker.df)[1] <- "UD_whale"
+#overlap is some form of boolean created with an if statement (If whale column is Yes or a value >0, AND if vessel colum is Yes or value >0, then overlap is 1 (or Yes)
+
+octo_whale_tanker.df <- octo_whale_tanker.df %>% mutate(overlapped= ifelse(UD_whale>0 & tanker_octo_time_spent>0,1,0))
+
+octo_whale_tanker.df$overlapped <-as.logical(octo_whale_tanker.df$overlapped)
+
+table(octo_whale_tanker.df$overlapped) 
+
+```

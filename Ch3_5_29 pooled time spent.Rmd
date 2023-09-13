@@ -1,0 +1,686 @@
+---
+title: "5_29 pooled time_spent"
+output: html_document
+---
+This script will caculate traffic for each vessel category using pooled data. So time spent per grid cell would only have one z value. 
+
+```{r}
+
+library(rgdal)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(plotly)
+library(plyr)
+library(lubridate)
+library(trip)
+
+```
+
+
+```{r}
+
+load("D:/auckland/nzsrw/chapter2/data/AIS_3_29_filtered.Rdata")# 2217165 lcs
+projection3851 <- CRS("+proj=lcc +lat_0=-41 +lon_0=173 +lat_1=-37.5 +lat_2=-44.5 +x_0=3000000 +y_0=7000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=km +no_defs +type=crs")
+r_g_all_3851 <- GridTopology(cellcentre.offset=c(-15,3910),cellsize=c(20,20),c(245,135))# 20km x 20km 
+
+AIS_inside_eez <- filter(AIS_inside_eez,Year !=2023)# 2178394 lcs
+#sapply(AIS_inside_eez, function(x) n_distinct(x)) # total unique vessel =93
+
+
+cargo <- subset(AIS_inside_eez,new_type=="Cargo")
+cargo <- cargo[!duplicated(cargo[c(2,12)]),]# from 26871 to 20714
+
+
+fishing <- subset(AIS_inside_eez,new_type=="Fishing")
+fishing <- fishing[!duplicated(fishing[c(2,12)]),] # from 1986288 to 962177
+
+other <- subset(AIS_inside_eez,new_type=="Other")
+other <- other[!duplicated(other[c(2,12)]),] # from 103738 to 58610
+
+
+
+passenger <- subset(AIS_inside_eez,new_type=="Passenger")
+passenger <- passenger[!duplicated(passenger[c(2,12)]),] # from 50374 to 11146
+
+
+tanker <- subset(AIS_inside_eez,new_type=="Tanker")
+tanker <- tanker[!duplicated(tanker[c(2,12)]),] # from 11123 to 10658
+
+
+```
+
+```{r fishing peak}
+
+# june-october only 
+# 962177 locations to 
+peak_fishing <- fishing %>% filter (Month >= 6)
+
+# reorder AIS_timest to least recent to the most recent for peak_fishing(ascending)
+peak_fishing<-peak_fishing[order(peak_fishing$AIS_timest),]
+peak_fishing$AIS_timest<-as.POSIXct(peak_fishing$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for peak_fishing
+peak_fishing_time_diff_mins_df <- ddply(peak_fishing, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,peak_fishing_time_diff_mins_df, mean)
+mts #n=36
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_peak_fishing_df <- ddply(peak_fishing_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_peak_fishing_df$track_seg <- paste(trackseg_peak_fishing_df$MMSI, "-",trackseg_peak_fishing_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_peak_fishing_df <- trackseg_peak_fishing_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_peak_fishing_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_peak_fishing_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_peak_fishing_df<- spTransform(reorder_trackseg_peak_fishing_df,CRSobj=projection3851)
+
+#reorder_trackseg_peak_fishing_df
+
+# make trip 
+tr_reorder_trackseg_peak_fishing_df <- trip(reorder_trackseg_peak_fishing_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_peak_fishing_df)
+
+tg_peak_fishing<- tripGrid(x=tr_reorder_trackseg_peak_fishing_df,grid = r_g_all_3851, method="pixellate")
+tg_peak_fishing $z=tg_peak_fishing $z/86400
+tg_peak_fishing$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_peak_fishing.spdf <- as(tg_peak_fishing, "SpatialPixelsDataFrame")
+tg_peak_fishing.df <-as.data.frame(tg_peak_fishing.spdf)
+tg_peak_fishing.df$z[tg_peak_fishing.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_peak_fishing.poly <- as(tg_peak_fishing.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_peak_fishing.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "peak_fishing",driver="ESRI Shapefile")
+
+# rank cells 
+#rank_tg_passenger.df <- tg_passenger.df
+#rank_tg_passenger.df $rank <- rank(rank_tg_passenger.df $z,na.last="keep")
+
+```
+
+```{r cargo peak}
+
+# june-october only 
+peak_cargo <- cargo %>% filter (Month >= 6)
+
+# reorder AIS_timest to least recent to the most recent for peak_cargo(ascending)
+peak_cargo<-peak_cargo[order(peak_cargo$AIS_timest),]
+peak_cargo$AIS_timest<-as.POSIXct(peak_cargo$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for peak_cargo
+peak_cargo_time_diff_mins_df <- ddply(peak_cargo, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,peak_cargo_time_diff_mins_df, mean)
+mts #n=36
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_peak_cargo_df <- ddply(peak_cargo_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_peak_cargo_df$track_seg <- paste(trackseg_peak_cargo_df$MMSI, "-",trackseg_peak_cargo_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_peak_cargo_df <- trackseg_peak_cargo_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_peak_cargo_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_peak_cargo_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_peak_cargo_df<- spTransform(reorder_trackseg_peak_cargo_df,CRSobj=projection3851)
+
+#reorder_trackseg_peak_cargo_df
+
+# make trip 
+tr_reorder_trackseg_peak_cargo_df <- trip(reorder_trackseg_peak_cargo_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_peak_cargo_df)
+
+tg_peak_cargo<- tripGrid(x=tr_reorder_trackseg_peak_cargo_df,grid = r_g_all_3851, method="pixellate")
+tg_peak_cargo $z=tg_peak_cargo $z/86400
+tg_peak_cargo$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_peak_cargo.spdf <- as(tg_peak_cargo, "SpatialPixelsDataFrame")
+tg_peak_cargo.df <-as.data.frame(tg_peak_cargo.spdf)
+tg_peak_cargo.df$z[tg_peak_cargo.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_peak_cargo.poly <- as(tg_peak_cargo.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_peak_cargo.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "peak_cargo",driver="ESRI Shapefile")
+
+
+```
+
+
+```{r tanker peak}
+# june-october only 
+peak_tanker <- tanker %>% filter (Month >= 6)
+
+# reorder AIS_timest to least recent to the most recent for peak_tanker(ascending)
+peak_tanker<-peak_tanker[order(peak_tanker$AIS_timest),]
+peak_tanker$AIS_timest<-as.POSIXct(peak_tanker$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for peak_tanker
+peak_tanker_time_diff_mins_df <- ddply(peak_tanker, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,peak_tanker_time_diff_mins_df, mean)
+mts #n=36
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_peak_tanker_df <- ddply(peak_tanker_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_peak_tanker_df$track_seg <- paste(trackseg_peak_tanker_df$MMSI, "-",trackseg_peak_tanker_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_peak_tanker_df <- trackseg_peak_tanker_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_peak_tanker_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_peak_tanker_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_peak_tanker_df<- spTransform(reorder_trackseg_peak_tanker_df,CRSobj=projection3851)
+
+#reorder_trackseg_peak_tanker_df
+
+# make trip 
+tr_reorder_trackseg_peak_tanker_df <- trip(reorder_trackseg_peak_tanker_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_peak_tanker_df)
+
+tg_peak_tanker<- tripGrid(x=tr_reorder_trackseg_peak_tanker_df,grid = r_g_all_3851, method="pixellate")
+tg_peak_tanker $z=tg_peak_tanker $z/86400
+tg_peak_tanker$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_peak_tanker.spdf <- as(tg_peak_tanker, "SpatialPixelsDataFrame")
+tg_peak_tanker.df <-as.data.frame(tg_peak_tanker.spdf)
+tg_peak_tanker.df$z[tg_peak_tanker.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_peak_tanker.poly <- as(tg_peak_tanker.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_peak_tanker.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "peak_tanker",driver="ESRI Shapefile")
+
+
+```
+
+
+```{r other peak}
+# june-october only 
+peak_other <- other %>% filter (Month >= 6)
+
+# reorder AIS_timest to least recent to the most recent for peak_other(ascending)
+peak_other<-peak_other[order(peak_other$AIS_timest),]
+peak_other$AIS_timest<-as.POSIXct(peak_other$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for peak_other
+peak_other_time_diff_mins_df <- ddply(peak_other, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,peak_other_time_diff_mins_df, mean)
+mts #n=36
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_peak_other_df <- ddply(peak_other_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_peak_other_df$track_seg <- paste(trackseg_peak_other_df$MMSI, "-",trackseg_peak_other_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_peak_other_df <- trackseg_peak_other_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_peak_other_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_peak_other_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_peak_other_df<- spTransform(reorder_trackseg_peak_other_df,CRSobj=projection3851)
+
+#reorder_trackseg_peak_other_df
+
+# make trip 
+tr_reorder_trackseg_peak_other_df <- trip(reorder_trackseg_peak_other_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_peak_other_df)
+
+tg_peak_other<- tripGrid(x=tr_reorder_trackseg_peak_other_df,grid = r_g_all_3851, method="pixellate")
+tg_peak_other $z=tg_peak_other $z/86400
+tg_peak_other$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_peak_other.spdf <- as(tg_peak_other, "SpatialPixelsDataFrame")
+tg_peak_other.df <-as.data.frame(tg_peak_other.spdf)
+tg_peak_other.df$z[tg_peak_other.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_peak_other.poly <- as(tg_peak_other.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_peak_other.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "peak_other",driver="ESRI Shapefile")
+
+
+```
+
+
+```{r passenger}
+
+# reorder AIS_timest to least recent to the most recent for passenger(ascending)
+passenger<-passenger[order(passenger$AIS_timest),]
+passenger$AIS_timest<-as.POSIXct(passenger$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for passenger
+passenger_time_diff_mins_df <- ddply(passenger, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,passenger_time_diff_mins_df, mean)
+mts #this is the mean time step
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_passenger_df <- ddply(passenger_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_passenger_df$track_seg <- paste(trackseg_passenger_df$MMSI, "-",trackseg_passenger_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_passenger_df <- trackseg_passenger_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_passenger_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_passenger_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_passenger_df<- spTransform(reorder_trackseg_passenger_df,CRSobj=projection3851)
+
+#reorder_trackseg_passenger_df
+
+# make trip 
+tr_reorder_trackseg_passenger_df <- trip(reorder_trackseg_passenger_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_passenger_df)
+
+tg_passenger<- tripGrid(x=tr_reorder_trackseg_passenger_df,grid = r_g_all_3851, method="pixellate")
+tg_passenger $z=tg_passenger $z/86400
+tg_passenger$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_passenger.spdf <- as(tg_passenger, "SpatialPixelsDataFrame")
+tg_passenger.df <-as.data.frame(tg_passenger.spdf)
+tg_passenger.df$z[tg_passenger.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_passenger.poly <- as(tg_passenger.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_passenger.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "passenger",driver="ESRI Shapefile")
+
+# rank cells 
+#rank_tg_passenger.df <- tg_passenger.df
+#rank_tg_passenger.df $rank <- rank(rank_tg_passenger.df $z,na.last="keep")
+
+```
+
+```{r other}
+
+# reorder AIS_timest to least recent to the most recent for other(ascending)
+other<-other[order(other$AIS_timest),]
+other$AIS_timest<-as.POSIXct(other$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for other
+other_time_diff_mins_df <- ddply(other, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,other_time_diff_mins_df, mean)
+mts #this is the mean time step
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_other_df <- ddply(other_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_other_df$track_seg <- paste(trackseg_other_df$MMSI, "-",trackseg_other_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_other_df <- trackseg_other_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_other_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_other_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_other_df<- spTransform(reorder_trackseg_other_df,CRSobj=projection3851)
+
+#reorder_trackseg_other_df
+
+# make trip 
+tr_reorder_trackseg_other_df <- trip(reorder_trackseg_other_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_other_df)
+
+tg_other<- tripGrid(x=tr_reorder_trackseg_other_df,grid = r_g_all_3851, method="pixellate")
+tg_other $z=tg_other $z/86400
+tg_other$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_other.spdf <- as(tg_other, "SpatialPixelsDataFrame")
+tg_other.df <-as.data.frame(tg_other.spdf)
+tg_other.df$z[tg_other.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_other.poly <- as(tg_other.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_other.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "other",driver="ESRI Shapefile")
+
+# rank cells 
+#rank_tg_other.df <- tg_other.df
+#rank_tg_other.df $rank <- rank(rank_tg_other.df $z,na.last="keep")
+
+```
+
+```{r cargo}
+# reorder AIS_timest to least recent to the most recent for cargo(ascending)
+cargo<-cargo[order(cargo$AIS_timest),]
+cargo$AIS_timest<-as.POSIXct(cargo$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for cargo
+cargo_time_diff_mins_df <- ddply(cargo, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,cargo_time_diff_mins_df, mean)
+mts #this is the mean time step
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_cargo_df <- ddply(cargo_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_cargo_df$track_seg <- paste(trackseg_cargo_df$MMSI, "-",trackseg_cargo_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_cargo_df <- trackseg_cargo_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_cargo_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_cargo_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_cargo_df<- spTransform(reorder_trackseg_cargo_df,CRSobj=projection3851)
+
+#reorder_trackseg_cargo_df
+
+# make trip 
+tr_reorder_trackseg_cargo_df <- trip(reorder_trackseg_cargo_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_cargo_df)
+
+tg_cargo<- tripGrid(x=tr_reorder_trackseg_cargo_df,grid = r_g_all_3851, method="pixellate")
+tg_cargo $z=tg_cargo $z/86400
+tg_cargo$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_cargo.spdf <- as(tg_cargo, "SpatialPixelsDataFrame")
+tg_cargo.df <-as.data.frame(tg_cargo.spdf)
+tg_cargo.df$z[tg_cargo.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_cargo.poly <- as(tg_cargo.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_cargo.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "cargo",driver="ESRI Shapefile")
+
+# rank cells 
+rank_tg_cargo.df <- tg_cargo.df
+rank_tg_cargo.df $rank <- rank(rank_tg_cargo.df $z,na.last="keep")
+```
+
+```{r tanker}
+
+# reorder AIS_timest to least recent to the most recent for Tanker (ascending)
+tanker <-tanker[order(tanker$AIS_timest),]
+tanker$AIS_timest<-as.POSIXct(tanker$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for tanker
+tanker_time_diff_mins_df <- ddply(tanker, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,tanker_time_diff_mins_df, mean)
+mts #this is the mean time step
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_tanker_df <- ddply(tanker_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_tanker_df$track_seg <- paste(trackseg_tanker_df$MMSI, "-",trackseg_tanker_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_tanker_df <- trackseg_tanker_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_tanker_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_tanker_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_tanker_df<- spTransform(reorder_trackseg_tanker_df,CRSobj=projection3851)
+
+reorder_trackseg_tanker_df
+
+# make trip 
+tr_reorder_trackseg_tanker_df <- trip(reorder_trackseg_tanker_df,c("AIS_timest","track_seg"))
+summary(tr_reorder_trackseg_tanker_df)
+
+tg_tanker<- tripGrid(x=tr_reorder_trackseg_tanker_df,grid = r_g_all_3851, method="pixellate")
+tg_tanker $z=tg_tanker $z/86400
+tg_tanker$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_tanker.spdf <- as(tg_tanker, "SpatialPixelsDataFrame")
+tg_tanker.df <-as.data.frame(tg_tanker.spdf)
+tg_tanker.df$z[tg_tanker.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_tanker.poly <- as(tg_tanker.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_tanker.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "tanker",driver="ESRI Shapefile")
+
+# rank cells 
+rank_tg_tanker.df <- tg_tanker.df
+rank_tg_tanker.df $rank <- rank(rank_tg_tanker.df $z,na.last="keep")
+
+
+```
+
+```{r fishing}
+
+# reorder AIS_timest to least recent to the most recent for fishing(ascending)
+fishing<-fishing[order(fishing$AIS_timest),]
+fishing$AIS_timest<-as.POSIXct(fishing$AIS_timest,format="%Y-%m-%d %H:%M:%S", tz = "GMT")
+
+# calculate the time difference for fishing
+fishing_time_diff_mins_df <- ddply(fishing, ~MMSI, function(d){
+  d$time_diff_mins <- NA
+  for (i in 2:nrow(d)){
+    d$time_diff_mins[i] = as.numeric(difftime(d$AIS_timest[i], d$AIS_timest[i-1], units = "mins"))}
+  return(d)
+})
+
+
+# mean time difference between locations (in minutes)
+mts <- aggregate(time_diff_mins~MMSI,fishing_time_diff_mins_df, mean)
+mts #this is the mean time step
+remove(mts)
+
+# give a new track segments if the gap is >1440 mins 
+trackseg_fishing_df <- ddply(fishing_time_diff_mins_df, ~MMSI, function(d){
+ind <- which(d$time_diff_mins > 1440)
+d$mark <- 0
+d$mark[ind] <- 1
+d$track_seg <- cumsum(d$mark)
+  return(d)
+})
+
+# Now create a new id based on track segment
+trackseg_fishing_df$track_seg <- paste(trackseg_fishing_df$MMSI, "-",trackseg_fishing_df$track_seg, sep="")
+
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping.
+reorder_trackseg_fishing_df <- trackseg_fishing_df[,c(18,17,2,26,3:16,19:25)]
+
+sp::coordinates(reorder_trackseg_fishing_df)<- c("Longitude","Latitude")
+
+sp::proj4string(reorder_trackseg_fishing_df)<-sp::CRS("+init=epsg:4326")
+
+reorder_trackseg_fishing_df<- spTransform(reorder_trackseg_fishing_df,CRSobj=projection3851)
+
+#reorder_trackseg_fishing_df
+
+# make trip 
+tr_reorder_trackseg_fishing_df <- trip(reorder_trackseg_fishing_df,c("AIS_timest","track_seg"))
+#summary(tr_reorder_trackseg_fishing_df)
+
+tg_fishing<- tripGrid(x=tr_reorder_trackseg_fishing_df,grid = r_g_all_3851, method="pixellate")
+tg_fishing $z=tg_fishing $z/86400
+tg_fishing$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_fishing.spdf <- as(tg_fishing, "SpatialPixelsDataFrame")
+tg_fishing.df <-as.data.frame(tg_fishing.spdf)
+tg_fishing.df$z[tg_fishing.df$z==0]<-NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_fishing.poly <- as(tg_fishing.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_fishing.poly,dsn = "D:/auckland/nzsrw/chapter2/years/pooled_data",layer= "fishing",driver="ESRI Shapefile")
+
+# rank cells 
+rank_tg_fishing.df <- tg_fishing.df
+rank_tg_fishing.df $rank <- rank(rank_tg_fishing.df $z,na.last="keep")
+
+
+```

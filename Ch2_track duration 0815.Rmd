@@ -1,0 +1,468 @@
+---
+title: "track duration_314"
+output: html_document
+---
+
+R script used to calculate track duration/distance (table 2.2)
+R script used to calculate 95% credible intervals (table 2.3)
+R script used to keep lcs points that are within the EEZ (table 2.4)
+
+UPDATE 08/15/2023: new 2023 data for the following individuals 
+
+197853 (still transmitting as of May 31, 2023)
+208742
+235399 (still transmitting as of May 31, 2023)
+235400
+235401
+235402
+235403
+235404 (still transmitting as of May 31, 2023)
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(trip)
+library(sf)
+library(rgdal)
+
+EEZ <- readOGR("D:/auckland/nzsrw/maps/maps/nz_eez_pol_april2022/nz_eez_pol_april2022.shp",verbose=F)
+
+EEZ<- st_as_sf(EEZ, 
+    crs = 4326)
+```
+
+```{r overall}
+
+sf_overall<- st_as_sf(df_all, coords = c("lon", "lat"), 
+    crs = 4326)
+sf::sf_use_s2(FALSE)
+inside_eez_overall<- st_intersects(x=sf_overall,y=EEZ,sparse = F)
+table(inside_eez_overall)
+
+
+
+sf_overall <- sf_overall%>%
+        dplyr::mutate(sf_overall,inside.eez=inside_eez_overall)%>%
+        filter(inside.eez=="TRUE")%>%
+        select(-c(inside.eez))
+
+sf_overall$state <-  cut(sf_overall$g,breaks=c(0,0.514,1),labels=c("search","transit"),include.lowest=TRUE)
+
+# calculate average of g
+search<-sf_overall %>% filter(sf_overall$state =="search")
+          mean(search$g)
+
+transit<-sf_overall%>% filter(sf_overall$state =="transit")
+          mean(transit$g)
+          
+ci_search <- ci(search$g,method = "HDI")
+ci_search<- ci(search$g, method = "ETI")
+
+ci_transit <- ci(transit$g,method = "HDI")
+ci_transit<- ci(transit$g, method = "ETI")
+          
+# calculate 95% confidence interval 
+
+sample.n <- length(transit$g)
+sample.sd <- sd(transit$g)
+sample.se <- sample.sd/sqrt(sample.n)
+print(sample.se)
+  
+alpha = 0.05
+degrees.freedom = sample.n - 1
+t.score = qt(p=alpha/2, df=degrees.freedom,lower.tail=F)
+print(t.score)
+                  
+margin.error <- t.score * sample.se          
+
+
+lower.bound <- mean(transit$g) - margin.error
+upper.bound <- mean(transit$g) + margin.error
+print(c(lower.bound,upper.bound))          
+
+
+
+
+```
+
+
+```{r 2009}
+
+sf_09<- st_as_sf(mpm_ssm_12h, coords = c("lon", "lat"), 
+    crs = 4326)
+sf::sf_use_s2(FALSE)
+inside_eez_09<- st_intersects(x=sf_09,y=EEZ,sparse = F)
+table(inside_eez_09)
+
+# 478/150 (inside/outside) for 2009
+
+mpm_ssm_12h <- mpm_ssm_12h%>%
+        dplyr::mutate(mpm_ssm_12h,inside.eez=inside_eez_09)%>%
+        filter(inside.eez=="TRUE")%>%
+        select(-c(inside.eez))
+
+mpm_ssm_12h$state <-  cut(mpm_ssm_12h$g,breaks=c(0,0.28,1),labels=c("search","transit"),include.lowest=TRUE)
+
+# calculate average of g
+search<-mpm_ssm_12h %>% filter(mpm_ssm_12h$state =="search")
+          mean(search$g)
+
+transit<-mpm_ssm_12h%>% filter(mpm_ssm_12h$state =="transit")
+          mean(transit$g)
+          
+ci_search <- ci(search$g,method = "HDI")
+ci_transit <- ci(transit$g,method = "HDI")
+
+          
+# calculate 95% confidence interval 
+
+sample.n <- length(search$g)
+sample.sd <- sd(search$g)
+sample.se <- sample.sd/sqrt(sample.n)
+print(sample.se)
+  
+alpha = 0.05
+degrees.freedom = sample.n - 1
+t.score = qt(p=alpha/2, df=degrees.freedom,lower.tail=F)
+print(t.score)
+                  
+margin.error <- t.score * sample.se          
+
+
+lower.bound <- mean(search$g) - margin.error
+upper.bound <- mean(search$g) + margin.error
+print(c(lower.bound,upper.bound))          
+          
+# make trip 
+# put the first four columns as lon, lat, date-time, grouping. 
+mpm_ssm_12h <-mpm_ssm_12h [,c(3,4,2,1,3,5:18)]
+
+sp::coordinates(mpm_ssm_12h )<- c("lon","lat")
+tr_mpm_ssm_12h  <- trip(mpm_ssm_12h ,c("date","name"))
+summary(tr_mpm_ssm_12h)
+
+```
+
+```{r 2020}
+
+EEZ <- readOGR("D:/auckland/nzsrw/maps/maps/nz_eez_pol_april2022/nz_eez_pol_april2022.shp",verbose=F)
+
+EEZ<- st_as_sf(EEZ, 
+    crs = 4326)
+
+# keep whales that were tagged in 2020 only 
+
+load("D:/auckland/nzsrw/chapter1 07102023/2020/ssm_mpm_20.Rdata")
+
+sf_20<- st_as_sf(ssm_mpm_20, coords = c("lon", "lat"), 
+    crs = 4326)
+inside_eez_20<- st_intersects(x=sf_20,y=EEZ,sparse = F)
+table(inside_eez_20)
+
+# 594/3156 (inside/outside) for 2020
+
+eez_20 <- ssm_mpm_20%>%
+        dplyr::mutate(ssm_mpm_20,inside.eez=inside_eez_20)%>%
+        filter(inside.eez=="TRUE")
+
+eez_20$state <- cut(eez_20$g,breaks=c(0,0.514,1),labels=c("search","transit"),include.lowest=TRUE)
+
+# calculate average of g
+search<-eez_20 %>% filter(eez_20$state =="search")
+          mean(search$g)
+
+transit<-eez_20%>% filter(eez_20$state =="transit")
+          mean(transit$g)
+          
+ci_search <- ci(search$g,method = "HDI")
+ci_transit <- ci(transit$g,method = "HDI")
+
+          
+# calculate 95% confidence interval 
+
+
+sample.n <- length(search$g)
+sample.sd <- sd(search$g)
+sample.se <- sample.sd/sqrt(sample.n)
+print(sample.se)
+  
+alpha = 0.05
+degrees.freedom = sample.n - 1
+t.score = qt(p=alpha/2, df=degrees.freedom,lower.tail=F)
+print(t.score)
+                  
+margin.error <- t.score * sample.se          
+
+
+lower.bound <- mean(search$g) - margin.error
+upper.bound <- mean(search$g) + margin.error
+print(c(lower.bound,upper.bound))     
+
+
+# make trip 
+# put the first four columns as lon, lat, date-time, grouping. 
+eez_20 <-eez_20 [,c(3,4,2,1,3,5:18)]
+
+sp::coordinates(eez_20 )<- c("lon","lat")
+tr_eez_20 <- trip(eez_20 ,c("date","id"))
+summary(tr_eez_20)
+
+
+```
+
+
+```{r 2020 weird ones}
+# recalculate time duration for those have >365 dys 
+#PTT 203574
+eez_20_df <- as.data.frame(eez_20)
+ptt_203574 <- filter(eez_20_df,id=="203574-0")
+
+# Apparently there supposed to be two track segments but that didnt happen somehow 
+# so filter based on date
+
+ptt_203574_20 <- filter(ptt_203574,date<"2021-6-07")
+ptt_203574_21 <- filter(ptt_203574,date>"2021-6-07")
+
+# make trip 
+# put the first four columns as lon, lat, date-time, grouping. 
+ptt_203574_20 <-ptt_203574_20 [,c(3,4,2,1,3,5:18)]
+ptt_203574_21 <-ptt_203574_21 [,c(3,4,2,1,3,5:18)]
+
+sp::coordinates(ptt_203574_20 )<- c("lon","lat")
+tr_ptt_203574_20  <- trip(ptt_203574_20 ,c("date","id"))
+
+sp::coordinates(ptt_203574_21 )<- c("lon","lat")
+tr_ptt_203574_21  <- trip(ptt_203574_21 ,c("date","id"))
+
+summary(tr_ptt_203574_20)
+summary(tr_ptt_203574_21)
+
+```
+
+```{r 2021}
+# keep whales that were tagged in 2021 only 
+
+load("D:/auckland/nzsrw/chapter1 07102023/2021/ssm_mpm_21.Rdata")
+
+sf_21<- st_as_sf(ssm_mpm_21, coords = c("lon", "lat"), 
+    crs = 4326)
+inside_eez_21<- st_intersects(x=sf_21,y=EEZ,sparse = F)
+table(inside_eez_21)
+
+# 1666/3735 (inside/outside) for 2021
+
+eez_21 <- ssm_mpm_21%>%
+        dplyr::mutate(ssm_mpm_21,inside.eez=inside_eez_21)%>%
+        filter(inside.eez=="TRUE")
+
+eez_21$state <- cut(eez_21$g,breaks=c(0,0.514,1),labels=c("search","transit"),include.lowest=TRUE)
+
+# calculate average of g
+search<-eez_21 %>% filter(eez_21$state =="search")
+          mean(search$g)
+
+transit<-eez_21%>% filter(eez_21$state =="transit")
+          mean(transit$g)
+          
+ci_search_HDI <- ci(search$g,method="HDI")
+ci_search_ETI <- ci(search$g,method = "ETI")
+ci_transit <- ci(transit$g,method = "ETI")
+
+out <- estimate_density(search$g, extend = TRUE)
+ggplot(out, aes(x = x, y = y)) +
+  geom_area(fill = "orange") +
+  theme_classic() +
+  # HDI in blue
+  geom_vline(xintercept = ci_search_HDI$CI_low, color = "royalblue", linewidth = 3) +
+  geom_vline(xintercept = ci_search_HDI$CI_high, color = "royalblue", linewidth = 3) +
+  # ETI in red
+  geom_vline(xintercept = ci_search_ETI$CI_low, color = "red", linewidth = 1) +
+  geom_vline(xintercept = ci_search_ETI$CI_high, color = "red", linewidth = 1)
+
+
+
+# make trip 
+# put the first four columns as lon, lat, date-time, grouping. 
+eez_21 <-eez_21 [,c(3,4,2,1,3,5:18)]
+
+sp::coordinates(eez_21 )<- c("lon","lat")
+tr_eez_21 <- trip(eez_21 ,c("date","id"))
+summary(tr_eez_21)
+
+```
+
+
+```{r weird ones 2021}
+
+eez_21.df <- as.data.frame(eez_21)
+ptt_46950 <- eez_21.df%>% filter(id=="46950-0")
+
+
+# first part (2021/7/21-2021/8/5 )
+# make trip 
+# put the first four columns as lon, lat, date-time, grouping. 
+ptt_46950_part1 <- filter(ptt_46950,date<"2021-8-6 12:00")
+
+
+sp::coordinates(ptt_46950_part1  )<- c("lon","lat")
+tr_ptt_46950_part1   <- trip(ptt_46950_part1  ,c("date","id"))
+
+summary(tr_ptt_46950_part1)
+
+# second part 
+
+ptt_46950_part2 <- filter(ptt_46950,date>="2022-1-24 14:00:00"&
+                                    date <="2022-2-10 21:00:00")
+
+sp::coordinates(ptt_46950_part2  )<- c("lon","lat")
+tr_ptt_46950_part2  <- trip(ptt_46950_part2  ,c("date","id"))
+
+summary(tr_ptt_46950_part2)
+
+# third part 
+
+ptt_46950_part3 <- filter(ptt_46950,date>="2022-3-1 9:00:00"
+                                   )
+
+sp::coordinates(ptt_46950_part3  )<- c("lon","lat")
+tr_ptt_46950_part3  <- trip(ptt_46950_part3  ,c("date","id"))
+
+summary(tr_ptt_46950_part1)
+summary(tr_ptt_46950_part2)
+summary(tr_ptt_46950_part3)
+```
+
+```{r 2022}
+
+# keep whales that were tagged in 2022 only 
+
+load("D:/auckland/nzsrw/chapter1 07102023/2022/ssm_mpm_22.Rdata")
+
+sf_22<- st_as_sf(ssm_mpm_22, coords = c("lon", "lat"), 
+    crs = 4326)
+inside_eez_22<- st_intersects(x=sf_22,y=EEZ,sparse = F)
+table(inside_eez_22)
+
+# 2365/3270 (inside/outside) for 2022
+
+eez_22 <- ssm_mpm_22%>%
+        dplyr::mutate(ssm_mpm_22,inside.eez=inside_eez_22)%>%
+        filter(inside.eez=="TRUE")
+
+eez_22$state <- cut(eez_22$g,breaks=c(0,0.514,1),labels=c("search","transit"),include.lowest=TRUE)
+
+# calculate average of g
+search<-eez_22 %>% filter(eez_22$state =="search")
+          mean(search$g)
+
+transit<-eez_22%>% filter(eez_22$state =="transit")
+          mean(transit$g)
+          
+ci_search <- ci(search$g,method = "HDI")
+ci_transit <- ci(transit$g,method = "HDI")
+          
+          
+# calculate 95% confidence interval 
+
+
+sample.n <- length(search$g)
+sample.sd <- sd(search$g)
+sample.se <- sample.sd/sqrt(sample.n)
+print(sample.se)
+  
+alpha = 0.05
+degrees.freedom = sample.n - 1
+t.score = qt(p=alpha/2, df=degrees.freedom,lower.tail=F)
+print(t.score)
+                  
+margin.error <- t.score * sample.se          
+
+
+lower.bound <- mean(search$g) - margin.error
+upper.bound <- mean(search$g) + margin.error
+print(c(lower.bound,upper.bound))     
+
+
+# make trip 
+# put the first four columns as lon, lat, date-time, grouping. 
+eez_22 <-eez_22 [,c(3,4,2,1,3,5:18)]
+
+sp::coordinates(eez_22 )<- c("lon","lat")
+tr_eez_22 <- trip(eez_22 ,c("date","id"))
+summary(tr_eez_22)
+
+```
+
+```{r 235401}
+
+eez_22.df <- as.data.frame(eez_22)
+ptt_235401 <- filter(eez_22.df,id=="235401-2")
+
+
+# first part 
+
+ptt_235401_part1 <- filter(ptt_235401,date<"2022-7-20 ")
+
+sp::coordinates(ptt_235401_part1)<- c("lon","lat")
+tr_ptt_235401_part1    <- trip(ptt_235401_part1   ,c("date","id"))
+
+summary(tr_ptt_235401_part1 )
+
+# second part 
+
+ptt_235401_part2 <- filter(ptt_235401,date>"2022-7-20 ")
+
+sp::coordinates(ptt_235401_part2)<- c("lon","lat")
+tr_ptt_235401_part2    <- trip(ptt_235401_part2   ,c("date","id"))
+
+summary(tr_ptt_235401_part1 )
+summary(tr_ptt_235401_part2 )
+
+
+
+```
+
+
+
+```{r 235403}
+
+ptt_235403 <- filter(eez_22.df,id=="235403-0")
+
+
+
+# first part 
+
+ptt_235403_part1 <- filter(ptt_235403,date<"2022-7-20 ")
+
+sp::coordinates(ptt_235403_part1  )<- c("lon","lat")
+tr_ptt_235403_part1    <- trip(ptt_235403_part1   ,c("date","id"))
+
+summary(tr_ptt_235403_part1 )
+
+# second part 
+
+ptt_235403_part2 <- filter(ptt_235403,date>="2022-7-27 14:00:00"&
+                                    date <="2022-7-31 21:00:00")
+ptt_235403_part2 <- ptt_235403_part2 [,c(3,4,2,1,3,5:18)]
+
+sp::coordinates(ptt_235403_part2  )<- c("lon","lat")
+tr_ptt_235403_part2   <- trip(ptt_235403_part2   ,c("date","id"))
+
+summary(tr_ptt_235403_part2 )
+
+# third part 
+
+ptt_235403_part3 <- filter(ptt_235403,date>="2022-9-9 7:00:00"
+                                   )
+ptt_235403_part3 <- ptt_235403_part3[,c(3,4,2,1,3,5:18)]
+
+sp::coordinates(ptt_235403_part3  )<- c("lon","lat")
+tr_ptt_235403_part3<- trip(ptt_235403_part3  ,c("date","id"))
+
+summary(tr_ptt_235403_part1 )
+summary(tr_ptt_235403_part2 )
+summary(tr_ptt_235403_part3)
+
+
+```

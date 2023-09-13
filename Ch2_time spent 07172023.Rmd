@@ -1,0 +1,586 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-07-16"
+---
+time spent analysis with the latest data  (7/17/2023)
+
+Rerun analysis due to changing time step for 2020 data (8/15/2023)
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(rnaturalearth)
+library(rgdal)
+library(viridis)
+library(plotly)
+library(trip)
+library(sp)
+library(RColorBrewer)
+library(sf)
+
+world_map <- map_data("world")%>%fortify()
+sc <- scale_colour_gradientn(colours = viridis(100), limits=c(0,1))
+
+nz_eez <- readOGR("D:/auckland/nzsrw/maps/maps/nz_eez_pol_april2022/nz_eez_pol_april2022.shp")
+#nz_eez<-fortify(nz_eez)
+
+  ewbrks <-seq(160,180,5)
+nsbrks <-seq(-42.5,-55,-2.5)
+ewlbls <-unlist(lapply(ewbrks, function(x) ifelse(x < 0, paste(x, "°W"), ifelse(x > 0, paste(x, "°E"),x))))
+nslbls <-unlist(lapply(nsbrks, function(x) ifelse(x < 0, paste(-x, "°S"), ifelse(x > 0, paste(x, "°N"),x))))
+```
+
+
+```{r}
+
+load("D:/auckland/nzsrw/chapter1 07102023/df_all.Rdata") #15414 lcs 
+
+
+#convert long and lat to 360 format 
+#positive long = longitude + 360 
+# positive lat = lat + 180 
+
+#For Longitude
+
+df_all $longitude_360 <- ifelse(df_all$lon < 0, 
+                                  df_all$lon +360, 
+                                 df_all$lon)  
+
+## still filter a bit so it is easier to make grids 
+df_all <- df_all  %>% filter (longitude_360>135)#9133 lcs   
+
+# reorder column 
+# put the first four columns as lon, lat, tripID date-time. 
+# df_all<-df_all[,c(3,4,2,1,5:18)]
+df_all<-df_all[,c(19,4,2,1,3:18)]
+
+#colnames(df_all)[6]<-"lat"
+
+sp::coordinates(df_all)<- c("longitude_360","lat")
+
+#make trip 
+
+tr_df_all <- trip(df_all,c("date","id"))
+summary(tr_df_all)
+
+plot(tr_df_all, col=as.factor(tr_df_all$id),pch=1)
+axis(1)
+axis(2)
+
+# create grid cells
+r_g_all <- GridTopology(c(134,-64), c(0.35,0.35), c(186,63)) 
+r_g_all
+plot(as.SpatialPolygons.GridTopology(r_g_all))
+points(tr_df_all)
+
+#trip grid 
+tg_all_0.35 <- tripGrid(x=tr_df_all,grid = r_g_all, method="pixellate")
+
+tg_all_0.35$z=tg_all_0.35$z/86400 # convert time spent (in seconds) to days
+
+tg_all_0.35$ind <- 1:11718 # add index number to each grid cell
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_all_0.35.spdf <- as(tg_all_0.35, "SpatialPixelsDataFrame")
+tg_all_0.35.df <- as.data.frame(tg_all_0.35.spdf )
+head(tg_all_0.35.df)
+tg_all_0.35.df$z[tg_all_0.35.df$z==0] <- NA
+
+```
+
+```{r rank cells}
+
+# crop tg_all_0.35 to study area (160E)
+tg_eez.df <- tg_all_0.35.df %>% filter(s1>=160)
+
+
+# rank cells from high to low in terms of time spent 
+
+rank_tg_eez.df <- tg_eez.df
+rank_tg_eez.df $rank <- rank(rank_tg_eez.df $z,na.last="keep")
+
+#cumulative frequency = 1020
+
+# 75% UD = 1019 * 0.75 = 764.25 /z= 0.6309177
+# 50% UD = 1019 * 0.5 = 509.5 / z= 0.2677151
+# 25% UD = 1019 * 0.25 = 254.75/ z= 0.1565652
+
+tg_75_ud.df <- tg_eez.df %>% filter (z >= 0.6309177)
+tg_50_ud.df <- tg_eez.df %>% filter (z >= 0.2677151)
+tg_25_ud.df <- tg_eez.df %>% filter (z >= 0.1565652)
+
+```
+
+
+```{r average move persistence}
+
+sp::proj4string(df_all) <- sp::CRS("+proj=longlat +datum=WGS84")
+grid_cell <- sp::over(df_all,tg_all_0.35) #use over to extract the grid cell for each location
+
+df_all$grid_cell <- grid_cell$ind
+df_all$grid_cell <- as.factor(df_all$grid_cell)
+
+# create a custom color palette 
+
+nb.cols <- 6993
+mycolors <- colorRampPalette(brewer.pal(12, "Set3"))(nb.cols)
+
+p<- ggplot()+
+    geom_tile(data=tg_50_ud.df,aes(x=s1,y=s2,fill=z))+
+    coord_equal() + coord_fixed(xlim=c(160,180), ylim=c(-56,-45))+theme_bw()
+
+base_world <- p + geom_polygon(data=world_map, aes(x=long,y=lat,group=group))
+    
+tsp_p <- base_world+scale_fill_viridis(option = "D", na.value="white")+theme_bw()
+
+
+# grid cell 4371 port ros
+
+tsp_p + geom_point(data=data.frame(df_all[df_all$grid_cell==4371,]),aes(x=longitude_360,y=lat, colour = as.factor(grid_cell)))+
+  theme(legend.position="none")+
+  geom_point(size=0.01)+
+  scale_colour_manual(values = mycolors)
+  #ggplotly()
+
+```
+
+```{r move persistence}
+
+# b): average g per whale per grid cell 
+# c): average g across whales per grid cell 
+
+df_all_2 <- df_all %>% as.data.frame()
+
+
+#keep locations inside EEZ only
+# make a sf object for all the locations 
+sf_all <- st_as_sf(df_all_2,coords=c("lon","lat"),crs=4326)
+nz_eez.sf <- st_as_sf(nz_eez,coords=c("long","lat"),crs=4326)
+
+sf::sf_use_s2(FALSE)
+#keep locations within the EEZ
+inside_eez<-st_intersects(x=sf_all,y=nz_eez.sf,sparse=F)
+table(inside_eez)#FALSE/TRUE = 4030/5103
+
+#merge back to keep location fixes inside EEZ
+sf_all<- sf_all%>%
+        dplyr::mutate(sf_all,inside.eez=inside_eez)%>%
+        filter(inside.eez=="TRUE")%>%
+        select(-c(inside.eez))
+
+mean(sf_all$g) # mean =   0.5142884
+median(sf_all$g) #median =  0.4923694
+lapply(sf_all, summary)
+
+# Overall stat for move persistence index
+
+# Min.   1st Qu.   Median    Mean   3rd Qu. Max. 
+# 0.0105  0.2892  0.4924  0.5143   0.7655  0.9886 
+
+# 2009
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+# 0.01413 0.10748 0.23690 0.28831 0.44713 0.87373
+
+# 2020
+# Min. 1st Qu.  Median    Mean    3rd Qu.    Max. 
+# 0.0105  0.1229  0.4924  0.4704  0.8342  0.9477 
+
+# 2021
+#  Min. 1st Qu.  Median    Mean   3rd Qu.    Max. 
+# 0.0648  0.4044  0.5879  0.5914  0.7978  0.9886 
+
+# 2022
+#  Min.   1st Qu.  Median    Mean   3rd Qu.    Max. 
+# 0.09471 0.29721 0.48023 0.51539 0.71295  0.97928 
+
+
+# 2009
+sf_2009 <- filter(sf_all,name=="a"|
+                         name=="b"|
+                         name=="c"|
+                         name=="d")
+
+
+# 2020
+sf_2020 <- filter(sf_all,id == "203571-0"|
+                             id == "203571-1"|
+                               
+                            id == "203572-0"|
+                            id == "203572-1"|
+                              
+                              id == "203573-0"|
+                                  #id == "203573-1"|
+                                    
+                                  id == "203574-0"|
+                                    
+                                  id == "203575-0"|
+                                  id == "203575-2"|
+                              
+                                  id == "205015-0")
+
+
+#2021
+
+sf_2021 <- filter(sf_all,        id == "215262-0"|
+                                 id == "215262-1"|
+                                 id == "215262-2"|
+                                 id == "215262-4"|
+                                 id == "215262-6"|
+                                 id == "215262-7"|
+                                 id == "215262-9"|
+                                 id == "215262-12"|
+                                 id == "215262-13"|
+                                 id == "215262-14"|
+                                 id == "215262-15"|
+                                 id == "215262-16"|
+                               # id == "215262-18"|
+                                id == "215262-20"|
+                                #id =="215262-22"|
+                                id == "215262-26"|
+                                #id == "215262-27"|   
+                                id == "215262-30"|
+                                id == "215262-33"|
+                            id == "46633-0"| 
+                              id == "46635-0"| 
+                            
+                                 #id == "46635-2"| 
+                            
+                                 id == "46635-3"| 
+                          
+                                 id == "46950-0"|
+                                  
+                                 id == "46955-0"|
+                                 
+                                 id == "212499-0"|
+                                   
+                                 id == "212500-0"|
+                                   
+                                 id == "215258-0"|
+                                 id == "215258-1"|
+                                 id == "215258-3"|
+                                 id == "215258-4"|
+                                 #id == "215258-9"|
+                                 id == "215258-11"|
+                                 id == "215258-13"|
+                                #id == "215258-14"|
+                                 id == "215258-16"|
+                                   
+                                 id == "215259-0"|
+                                 id == "215259-1"|
+                                 id == "215259-2"|
+                                 id == "215259-3"|
+                                 id == "215259-5"|
+                                   
+                                 id == "215261-0"|
+                                 id == "215261-2"|
+                            
+                                 id == "215263-0")
+
+sf_2022 <- filter(sf_all, name=="Rua tekau mā tahi"|
+                          name=="Tekau mā waru" |
+                          name=="Tekau mā iwa"|
+                          name== "Rua tekau"|
+                          name=="Tekau mā whitu"|
+                          name=="Rua tekau mā toru"|
+                          name=="Rua tekau mā whā"|
+                         name=="Rua tekau mā rua")
+
+st_write(sf_2020,"D:/auckland/nzsrw/chapter1 07102023/2020/inside_sf.20.gpkg")
+
+
+
+remove(sf_2009)
+remove(sf_2020)
+remove(sf_2021)
+remove(sf_2022)
+
+
+# calculate average g per ID 
+# this does not take into account the number of locations for individual whale in that grid cell 
+average_g_per_whale <- df_all_2%>%
+  group_by(grid_cell,id,name) %>%
+  summarize(mean(g))
+
+# calculate average g per grid cell  
+average_g_per_grid_cell<- df_all_2%>%
+  group_by(grid_cell) %>%
+  #group_by(grid_cell) %>% 
+  summarize(per_grid_cell=mean(g))
+
+# total of 11718 grid cells
+# 10633 grid cells had ts readings. 
+
+### merge back into the original time spent grid
+to_merge <- data.frame("grid_cell"=as.factor(1:11718),"per_grid_cell"=-999)
+
+g_all_grid_cells <- full_join(x=to_merge,y=data.frame(average_g_per_grid_cell),by="grid_cell",keep=T)
+
+g_all_grid_cells<-g_all_grid_cells[,c(1,4)]
+colnames(g_all_grid_cells)<-c("grid_cells","average_g")
+
+tg_all_0.35.df$average_g = g_all_grid_cells$average_g # merge with df with all grid cells 
+
+# 7/24/2023
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+
+tg_all_0.35_MP <- tg_all_0.35
+tg_all_0.35_MP.spdf <- as(tg_all_0.35, "SpatialPixelsDataFrame")
+tg_all_0.35_MP.spdf$average_g = g_all_grid_cells$average_g
+tg_all_0.35_MP.spdf$grid_cell = "grid_cell"=as.factor(1:11718)
+tg_all_0.35_MP.spdf$z[tg_all_0.35_MP.spdf$z==0] <- NA
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_all_0.35.poly <- as(tg_all_0.35_MP.spdf,"SpatialPolygonsDataFrame")
+
+tg_all_0.35.poly$percent_2 <- tg_eez.df$percent_2
+
+#writeOGR(obj=tg_all_0.35.poly,dsn = "D:/auckland/nzsrw/chapter1 07102023/shapefile",layer= "time_spent_grid_4326",driver="ESRI Shapefile")
+
+
+# now it has move persistence tg_all_0.35
+# create another df to crop to study area to check new data
+
+# categorize points to different months/years
+df_all_3<-df_all_2
+df_all_3$months <- 1
+df_all_3$months <- strftime(df_all_3$date,"%m")
+df_all_3$years <- strftime(df_all_3$date,"%y")
+
+write.csv(df_all_3,"D:/auckland/nzsrw/chapter1 07102023/csv_yrs/df_all_3.csv")
+
+df_2009 <- filter(df_all_3,years=="09")
+unique(df_2009$name)
+
+df_2020 <- filter(df_all_3,years=="20")
+unique(df_2020$name)
+
+df_2021 <- filter(df_all_3,years=="21")
+unique(df_2021$name)
+
+df_2022 <- filter(df_all_3,years=="22")
+unique(df_2022$name)
+
+df_2023 <- filter(df_all_3,years=="23")
+unique(df_2023$name)
+
+write.csv(df_2009,"D:/auckland/nzsrw/chapter1 07102023/csv_yrs/2009.csv")
+write.csv(df_2020,"D:/auckland/nzsrw/chapter1 07102023/csv_yrs/2020.csv")
+write.csv(df_2021,"D:/auckland/nzsrw/chapter1 07102023/csv_yrs/2021.csv")
+write.csv(df_2022,"D:/auckland/nzsrw/chapter1 07102023/csv_yrs/2022.csv")
+write.csv(df_2023,"D:/auckland/nzsrw/chapter1 07102023/csv_yrs/2023.csv")
+
+
+# color by id 
+tsp_p + geom_point(data=data.frame(df_all_3[df_all_3$grid_cell==6785,]),aes(x=longitude_360,y=lat, colour = as.factor(id)))+
+    geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,linewidth=0.25)+geom_point(size=0.2)
+  ggplotly()
+
+  # color by yrs
+  tsp_p + geom_point(data=data.frame(df_all_3[df_all_3$grid_cell==4556,]),aes(x=longitude_360,y=lat, colour = as.factor(years)))+
+    geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,linewidth=0.25)+geom_point(size=0.2)
+  ggplotly()
+  
+   # color by months
+  tsp_p + geom_point(data=data.frame(df_all_3[df_all_3$grid_cell==4188,]),aes(x=longitude_360,y=lat, colour = as.factor(months)))+
+    geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,linewidth=0.25)+geom_point(size=0.2)
+  ggplotly()
+  
+# color by g 
+  
+   tsp_p + geom_point(data=data.frame(df_all_3[df_all_3$grid_cell==4556,]),aes(x=longitude_360,y=lat, colour = g),size=1)+
+    geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,linewidth=0.25)+geom_point(size=0.2)+sc
+   ggplotly()
+
+```
+
+```{r cutoff g}
+# mean 0.5143 # 39/771 ARS vs. transit grids 
+# median =  0.4924 # 
+# filter again to add move persistence index AND to focus on cells to the East of 160
+tg_eez.df <-tg_all_0.35.df %>% filter(s1>160)
+
+g_grid <- tg_eez.df %>% filter (average_g <0.5143) #ARS
+g_grid_1 <- tg_eez.df %>% filter (average_g >0.5143) # migration
+
+# move persistence plot 
+
+ move_persistence <-
+  ggplot()+
+  geom_tile(data=g_grid,aes(x=s1,y=s2),alpha=0.7,fill="red",width=0.4,height=0.4)+
+  geom_tile(data=g_grid_1,aes(x=s1,y=s2),alpha=0.7,fill="blue",width=0.4,height=0.4)+
+  #geom_point(data=data.frame(df_whole_2),aes(x=longitude_360,y=lat),size=0.5)+  
+  geom_polygon(data=world_map,aes(x=long,y=lat,group=group))+ 
+  geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,linewidth=1)+
+  coord_equal() + 
+  coord_fixed(xlim=c(159.5,185.5), ylim=c(-56,-44.5))+
+  theme_bw()+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme(panel.grid=element_blank())
+  #scale_x_continuous(breaks = ewbrks, labels = ewlbls, expand = c(0, 0))+
+  #scale_y_continuous(breaks = nsbrks, labels = nslbls, expand = c(0, 0))
+  ggplotly()
+  
+  
+#ggsave(move_persistence,file="D:/auckland/nzsrw/maps/maps/figures/move_persistence.tiff",dpi=300,height=7,width=11)
+  
+```
+
+grid cells to the southwest of AKL islands (pretty big variance in move persistence)
+
+4923  197853-2 215258-16 46635-0
+4924  197853-2 96375-3
+5108  215258-16 235401-2
+5109  197853-2  215258-16 235400-0
+5110  197853-2  215258-16 235400-0 235401-2  96375-3
+5294  215258-16 235499-9
+5295  197853-2  215258-16 235499-9 235400-0
+5296  197853-2  215258-16 235401-2
+
+Campbell Island 
+
+5124 197853-2 215262-12/13/14 (almost consecutively) 235399 (2023)
+5125 197853-2 235399-9 (2023)
+5126 197853-2 (2023) 215262-12/20 
+5311 (2023) 197853-2 235399-9 high time spent (43d) low g 
+
+North east of AKL Island 
+Disappear:4187, 4188 
+
+edge of EEZ: 
+6785
+6786
+6787
+5475
+
+These cells looked erroneous as only one loc was recorded
+
+```{r number of whales per grid cell}
+
+#summarize number of unique whales per cell 
+whales_per_grid_cell <- df_all_2 %>%
+  group_by(grid_cell) %>%
+  summarize(whales_per_grid_cell=n_distinct(name))
+
+# summarize the location fixes per cell 
+locs_whales_per_grid_cell <- df_all_2 %>%
+  group_by(grid_cell) %>%
+  summarize(locs_whales_per_grid_cell=n_distinct(longitude_360))
+
+#merge
+whales_lcs.df<-full_join(whales_per_grid_cell,locs_whales_per_grid_cell,by="grid_cell")
+
+whales_lcs.df$percent <- whales_lcs.df$whales_per_grid_cell/29*100
+
+colnames(tg_eez.df)[2]="grid_cell"
+
+tg_eez.df$grid_cell <-as.factor(tg_eez.df$grid_cell)
+
+tg_eez.df <- full_join(x=tg_eez.df,y=whales_lcs.df)
+
+tg_eez.df$percent<- cut(tg_eez.df$percent_of_whales, breaks = c(0,5,10,20,30,40,50,60,70,80,90,100),labels = c("5","10","20","30","40","50","60","70","80","90","100"))
+
+ggplot()+
+  geom_tile(data=tg_eez.df,aes(x=s1,y=s2,fill=as.factor(percent)))+
+  geom_polygon(data=world_map,aes(x=long,y=lat,group=group))+
+  geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,size=0.7)+
+  #geom_point(data=data.frame(df_whole_2),aes(x=longitude,y=lat),size=0.5)+
+  coord_equal() + 
+  coord_fixed(xlim=c(160,180), ylim=c(-56,-45))+
+  theme_bw()+
+  scale_fill_brewer(palette="RdYlBu", na.value="white",direction=-1,na.translate=F)+
+  theme(panel.grid=element_blank())+
+  xlab("longitude")+
+  ylab("latitude")+
+  labs(fill="percentage of whales per grid cell")
+```
+
+```{r}
+#save(tg_eez.df,file="D:/auckland/nzsrw/chapter1 07102023/ts_grid_160.Rdata")
+#write.csv(tg_eez.df,file="D:/auckland/nzsrw/chapter1 07102023/ts_grid_160.csv")
+```
+
+
+
+
+```{r number}
+
+ewbrks <-seq(160,180,5)
+nsbrks <-seq(-42.5,-55,-2.5)
+ewlbls <-unlist(lapply(ewbrks, function(x) ifelse(x < 0, paste(x, "°W"), ifelse(x > 0, paste(x, "°E"),x))))
+nslbls <-unlist(lapply(nsbrks, function(x) ifelse(x < 0, paste(-x, "°S"), ifelse(x > 0, paste(x, "°N"),x))))
+
+load("D:/auckland/nzsrw/chapter1 07102023/tg_eez.df.Rdata")
+
+tg_eez.df$percent<- cut(tg_eez.df$percent_of_whales, breaks = c(0,5,11,21,30,40,50,55,70,83,94,100),labels = c("5","10","20","30","40","50","55","70","85","95","100"))
+
+tg_eez.df$percent_3<- cut(tg_eez.df$percent, breaks = c(0,10,25,30,50,75,87,97,100),labels = c("0-10","10-25","25-30","30-50","50-75","86","96","100"))
+
+whale_number <-
+  ggplot()+
+  geom_tile(data=tg_eez.df,aes(x=s1,y=s2,fill=as.factor(percent_3)),width=0.4,height=0.4)+
+  geom_polygon(data=world_map,aes(x=long,y=lat,group=group))+
+  geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,linewidth=0.7)+
+  coord_equal() + 
+  coord_fixed(xlim=c(160,180), ylim=c(-56,-44.5))+
+  theme_bw()+
+  scale_fill_brewer(palette="RdYlBu", na.value="white",direction=-1,na.translate=F)+
+  theme(panel.grid=element_blank())+
+  xlab("longitude")+
+  ylab("latitude")+
+  labs(fill="Percentage of whales per grid cell")+
+  scale_x_continuous(breaks = ewbrks, labels = ewlbls, expand = c(0, 0))+
+  scale_y_continuous(breaks = nsbrks, labels = nslbls, expand = c(0, 0))
+  ggplotly()
+
+  ggsave(whale_number,dpi=300,width=10,height=7,file="D:/auckland/nzsrw/chapter1 07102023/figures/figure 2.6.png")
+# most important areas 
+  
+most_important_areas <- filter (tg_eez.df,z>=0.2672477&
+                                          percent >=50&
+                                          average_g<=0.55)
+
+
+
+IMMA_whole <-readOGR("D:/auckland/nzsrw/maps/maps/proposal/imma/iucn-imma.shp")
+
+
+# subset subantarctic IMMA and Rakiura Stewart Island IMMA
+
+IMMA <- IMMA_whole %>% subset(Ident.Code =="21ANSEIO202020IMMA"|
+                               Ident.Code =="07EXSOOC182020IMMA")
+
+IMMA <- fortify (IMMA)
+
+remove(IMMA_whole)
+
+nz_mpa <-#readOGR("G:/auckland/nz_right_whale/maps/mfe-marine-reserves-SHP/marine-reserves.shp")
+        readOGR("D:/auckland/nzsrw/maps/maps/mfe-marine-reserves-SHP/marine-reserves.shp") 
+nz_mpa <- nz_mpa %>% subset  (Name=="Auckland Islands - Motu Maha Marine Reserve"|
+                            Name=="Moutere Ihupuku / Campbell Island Marine Reserve")
+
+nz_mpa <-fortify(nz_mpa)
+
+ ggplot()+
+  geom_tile(data=most_important_areas,aes(x=s1,y=s2),fill="red")+
+ geom_polygon(data=nz_mpa,aes(x=long,y=lat,group=group),col="black",fill=NA)+
+ geom_polygon(data=IMMA[IMMA$group==127.1,],aes(x=long,y=lat,group=group),col="black",fill=NA,lty=2,alpha=0.5)+
+  geom_polygon(data=IMMA[IMMA$group==159.1,],aes(x=long,y=lat,group=group),col="black",fill=NA,lty=2,alpha=0.5)+
+
+  geom_polygon(data=world_map,aes(x=long,y=lat,group=group),col="black")+
+ geom_polygon(data=nz_eez,aes(x=long,y=lat,group=group),col="black",fill=NA,size=0.6)+
+  coord_fixed(xlim=c(160,180), ylim=c(-56,-44.5))+
+  theme_bw()+
+  xlab("longitude")+
+  ylab("latitude")+
+  theme(panel.grid=element_blank())+
+  scale_x_continuous(breaks = ewbrks, labels = ewlbls, expand = c(0, 0))+
+  scale_y_continuous(breaks = nsbrks, labels = nslbls, expand = c(0, 0))
+  ggplotly()
+  
+#save(tg_eez.df,file="D:/auckland/nzsrw/chapter1 07102023/tg_eez.df.Rdata")
+```

@@ -1,0 +1,481 @@
+---
+title: "table2"
+output: html_document
+---
+This script calculate table 2 chapter 2
+```{r}
+
+library(rgdal)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(plotly)
+library(plyr)
+```
+
+```{r whale MPA}
+
+whale_aucklandMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_whaleMPA.shp")
+
+whale_aucklandMPA <- as.data.frame(whale_aucklandMPA)
+
+whale_aucklandMPA <- filter(whale_aucklandMPA, z>=0.230788)
+whale_aucklandMPA <- filter(whale_aucklandMPA, ind<=9193)
+
+sum(whale_aucklandMPA$whale_area)
+# total area of 50% UD whale in auckland MPA is 4991.469 sqkm
+# total area of 50% UD whale in campbell MPA is 1175.6. sqkm
+whale_campbellMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_whaleMPA.shp")
+
+whale_campbellMPA <- as.data.frame(whale_campbellMPA)
+
+whale_campbellMPA <- filter(whale_campbellMPA, z>=0.230788)
+whale_campbellMPA <- filter(whale_campbellMPA, ind>9193)
+
+sum(whale_campbellMPA$whale_area)
+```
+
+```{r MPA fishing}
+
+fishing_aucklandMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_fishingMPA.shp")
+
+fishing_aucklandMPA <- as.data.frame(fishing_aucklandMPA)
+
+fishing_aucklandMPA <- filter(fishing_aucklandMPA, z>0)
+fishing_aucklandMPA <- filter(fishing_aucklandMPA, ind<=9193 & ind>=7967)
+
+sum(fishing_aucklandMPA$area_2)
+
+fishing_campbellMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_fishingMPA.shp")
+
+fishing_campbellMPA <- as.data.frame(fishing_campbellMPA)
+
+fishing_campbellMPA <- filter(fishing_campbellMPA, z>0)
+fishing_campbellMPA <- filter(fishing_campbellMPA, ind>=10674)
+
+sum(fishing_campbellMPA$area_2)
+
+# total area of fishing in auckland MPA is 3556.68 sqkm
+# total area of fishing in campbell MPA is 591.756 sqkm
+
+
+```
+
+```{r other MPA}
+
+other_aucklandMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_otherMPA.shp")
+
+other_aucklandMPA <- as.data.frame(other_aucklandMPA)
+
+other_aucklandMPA <- filter(other_aucklandMPA, z>0)
+other_aucklandMPA <- filter(other_aucklandMPA, ind<=9193 & ind>=7967)
+
+sum(other_aucklandMPA$area_2)
+
+other_campbellMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_otherMPA.shp")
+
+other_campbellMPA <- as.data.frame(other_campbellMPA)
+
+other_campbellMPA <- filter(other_campbellMPA, z>0)
+other_campbellMPA <- filter(other_campbellMPA, ind>=10674)
+
+sum(other_campbellMPA$area_2)
+
+# total area of other in auckland MPA is 1772.932 sqkm
+# total area of other in campbell MPA is 450.755 sqkm
+
+
+```
+
+
+```{r whale fishing aklMPA}
+
+# auckland island MPA 
+
+whale_aucklandMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_whaleMPA.shp")
+
+whale_aucklandMPA <- as.data.frame(whale_aucklandMPA)
+
+whale_aucklandMPA <- filter(whale_aucklandMPA, z>=0.230788)
+whale_aucklandMPA <- filter(whale_aucklandMPA, ind<=9193)
+
+colnames(whale_aucklandMPA)[1]="whale_ts"
+
+# fishing akl MPA 
+
+fishing_aucklandMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_fishingMPA.shp")
+
+fishing_aucklandMPA <- as.data.frame(fishing_aucklandMPA)
+
+fishing_aucklandMPA <- filter(fishing_aucklandMPA, z>0)
+fishing_aucklandMPA <- filter(fishing_aucklandMPA, ind<=9193 & ind>=7967)
+
+whale_fishing_aklMPA <- full_join(fishing_aucklandMPA,whale_aucklandMPA)
+
+whale_fishing_aklMPA <- whale_fishing_aklMPA  %>% mutate(overlapped= ifelse(whale_ts>0 & z>0,1,0))
+
+whale_fishing_aklMPA$overlapped <- as.logical(whale_fishing_aklMPA$overlapped)
+table(whale_fishing_aklMPA$overlapped)
+
+whale_fishing_aklMPA <- filter(whale_fishing_aklMPA,overlapped==TRUE)
+
+sum(fishing_aucklandMPA$area_2)
+sum(whale_fishing_aklMPA$area_2)
+
+# overlap area is 3381.611 sqkm
+
+```
+
+```{r fishing campbellMPA}
+
+
+# campbell island MPA 
+
+whale_campbellMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_whaleMPA.shp")
+
+whale_campbellMPA <- as.data.frame(whale_campbellMPA)
+
+whale_campbellMPA <- filter(whale_campbellMPA, z>=0.230788)
+whale_campbellMPA <- filter(whale_campbellMPA, ind>9193)
+
+colnames(whale_campbellMPA)[1]="whale_ts"
+
+# fishing campbell MPA 
+
+fishing_campbellMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_fishingMPA.shp")
+
+fishing_campbellMPA <- as.data.frame(fishing_campbellMPA)
+
+fishing_campbellMPA <- filter(fishing_campbellMPA, z>0)
+fishing_campbellMPA <- filter(fishing_campbellMPA, ind>9193)
+
+whale_fishing_campbellMPA <- full_join(fishing_campbellMPA,whale_campbellMPA)
+
+whale_fishing_campbellMPA <- whale_fishing_campbellMPA  %>% mutate(overlapped= ifelse(whale_ts>0 & z>0,1,0))
+
+whale_fishing_campbellMPA$overlapped <- as.logical(whale_fishing_campbellMPA$overlapped)
+table(whale_fishing_campbellMPA$overlapped)
+
+whale_fishing_campbellMPA <- filter(whale_fishing_campbellMPA,overlapped==TRUE)
+
+sum(fishing_campbellMPA$area_2)
+sum(whale_fishing_campbellMPA$area_2)
+
+# overlap area is 591.756 sqkm
+```
+
+```{r whale other akl MPA}
+
+# auckland island MPA 
+
+whale_aucklandMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_whaleMPA.shp")
+
+whale_aucklandMPA <- as.data.frame(whale_aucklandMPA)
+
+whale_aucklandMPA <- filter(whale_aucklandMPA, z>=0.230788)
+whale_aucklandMPA <- filter(whale_aucklandMPA, ind<=9193)
+
+colnames(whale_aucklandMPA)[1]="whale_ts"
+
+# other akl MPA 
+
+other_aucklandMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_otherMPA.shp")
+
+other_aucklandMPA <- as.data.frame(other_aucklandMPA)
+
+other_aucklandMPA <- filter(other_aucklandMPA, z>0)
+other_aucklandMPA <- filter(other_aucklandMPA, ind<=9193 & ind>=7967)
+
+whale_other_aklMPA <- full_join(other_aucklandMPA,whale_aucklandMPA)
+
+whale_other_aklMPA <- whale_other_aklMPA  %>% mutate(overlapped= ifelse(whale_ts>0 & z>0,1,0))
+
+whale_other_aklMPA$overlapped <- as.logical(whale_other_aklMPA$overlapped)
+table(whale_other_aklMPA$overlapped)
+
+whale_other_aklMPA <- filter(whale_other_aklMPA,overlapped==TRUE)
+
+sum(other_aucklandMPA$area_2)
+sum(whale_other_aklMPA$area_2)
+
+# overlap area is 1772.932 sqkm
+
+
+
+
+```
+
+```{r whale other campbell MPA}
+
+# campbell island MPA 
+
+whale_campbellMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_whaleMPA.shp")
+
+whale_campbellMPA <- as.data.frame(whale_campbellMPA)
+
+whale_campbellMPA <- filter(whale_campbellMPA, z>=0.230788)
+whale_campbellMPA <- filter(whale_campbellMPA, ind>9193)
+
+colnames(whale_campbellMPA)[1]="whale_ts"
+
+# other campbell MPA 
+
+other_campbellMPA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/table2/peak_otherMPA.shp")
+
+other_campbellMPA <- as.data.frame(other_campbellMPA)
+
+other_campbellMPA <- filter(other_campbellMPA, z>0)
+other_campbellMPA <- filter(other_campbellMPA, ind>9193)
+
+whale_other_campbellMPA <- full_join(other_campbellMPA,whale_campbellMPA)
+
+whale_other_campbellMPA <- whale_other_campbellMPA  %>% mutate(overlapped= ifelse(whale_ts>0 & z>0,1,0))
+
+whale_other_campbellMPA$overlapped <- as.logical(whale_other_campbellMPA$overlapped)
+table(whale_other_campbellMPA$overlapped)
+
+whale_other_campbellMPA <- filter(whale_other_campbellMPA,overlapped==TRUE)
+
+sum(other_campbellMPA$area_2)
+sum(whale_other_campbellMPA$area_2)
+
+# overlap area is 450.775 sqkm
+
+
+```
+
+
+```{r subIMMA whale}
+
+whale_subIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_whale_IMMA.shp")
+
+whale_subIMMA <- as.data.frame(whale_subIMMA)
+
+whale_subIMMA <- filter (whale_subIMMA,ind>=6990)
+whale_subIMMA <- filter (whale_subIMMA,z >= 0.230788)
+
+whale_subIMMA$area_2<-as.numeric(whale_subIMMA$area_2)
+sum(whale_subIMMA$area_2)
+
+colnames(whale_subIMMA)[1]="whale_ts"
+colnames(whale_subIMMA)[3]="whale_area"
+
+# total area of 50% ud in whale_subIMMA is 38343 sqkm2
+
+```
+
+```{r whale_stewart island}
+
+whale_stewIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_whale_IMMA.shp")
+
+whale_stewIMMA <- as.data.frame(whale_stewIMMA)
+
+whale_stewIMMA <- filter (whale_stewIMMA,ind < 6990)
+whale_stewIMMA <- filter (whale_stewIMMA,z >= 0.230788)
+
+whale_stewIMMA$area_2<-as.numeric(whale_stewIMMA$area_2)
+sum(whale_stewIMMA$area_2)
+
+colnames(whale_stewIMMA)[1]="whale_ts"
+colnames(whale_stewIMMA)[3]="whale_area"
+
+# total area of whale 50% UD in stewIMMA is 5030 sqkm2
+
+
+```
+
+```{r subIMMA fishing}
+
+fishing_subIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_fishing_IMMA.shp")
+
+fishing_subIMMA <- as.data.frame(fishing_subIMMA)
+
+fishing_subIMMA <- filter (fishing_subIMMA,ind>=6989)
+fishing_subIMMA <- filter(fishing_subIMMA,z >0)
+
+fishing_subIMMA$area_2<-as.numeric(fishing_subIMMA$area_2)
+sum(fishing_subIMMA$area_2)
+
+whale_fishing_subIMMA <- full_join(x=fishing_subIMMA,y=whale_subIMMA)
+
+
+
+whale_fishing_subIMMA <- whale_fishing_subIMMA %>% mutate(overlapped = ifelse(z>0 & whale_ts >0,1,0))
+
+whale_fishing_subIMMA$overlapped <- as.logical(whale_fishing_subIMMA$overlapped)
+
+table(whale_fishing_subIMMA$overlapped)
+
+whale_fishing_subIMMA <- filter(whale_fishing_subIMMA,overlapped == TRUE)
+
+sum(whale_fishing_subIMMA$whale_area)
+# total area of fishing in subIMMA is 46587 sqkm2
+# overlapped area between fishing and 50% UD whale is 26936 sqkm2
+
+
+```
+
+```{r subIMMA other}
+
+other_subIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_other_IMMA.shp")
+
+other_subIMMA <- as.data.frame(other_subIMMA)
+
+other_subIMMA <- filter (other_subIMMA,ind>=6989)
+other_subIMMA <- filter(other_subIMMA,z >0)
+
+other_subIMMA$area_2<-as.numeric(other_subIMMA$area_2)
+sum(other_subIMMA$area_2)
+
+whale_other_subIMMA <- full_join(x=other_subIMMA,y=whale_subIMMA)
+
+whale_other_subIMMA <- whale_other_subIMMA %>% mutate(overlapped = ifelse(z>0 & whale_ts >0,1,0))
+
+whale_other_subIMMA$overlapped <- as.logical(whale_other_subIMMA$overlapped)
+
+table(whale_other_subIMMA$overlapped)
+
+whale_other_subIMMA <- filter(whale_other_subIMMA,overlapped == TRUE)
+
+sum(whale_other_subIMMA$whale_area)
+
+# total area of other in subIMMA is 23244 sqkm2
+# overlapped area between other and 50% UD whale is 14038 sqkm2
+
+```
+
+
+```{r stew IMMA fishing}
+
+
+fishing_stewIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_fishing_IMMA.shp")
+
+fishing_stewIMMA <- as.data.frame(fishing_stewIMMA)
+
+fishing_stewIMMA <- filter (fishing_stewIMMA,ind<6989)
+fishing_stewIMMA <- filter(fishing_stewIMMA,z >0)
+
+fishing_stewIMMA$area_2<-as.numeric(fishing_stewIMMA$area_2)
+sum(fishing_stewIMMA$area_2)
+
+whale_fishing_stewIMMA <- full_join(x=fishing_stewIMMA,y=whale_stewIMMA)
+
+
+
+whale_fishing_stewIMMA <- whale_fishing_stewIMMA %>% mutate(overlapped = ifelse(z>0 & whale_ts >0,1,0))
+
+whale_fishing_stewIMMA$overlapped <- as.logical(whale_fishing_stewIMMA$overlapped)
+
+table(whale_fishing_stewIMMA$overlapped)
+
+whale_fishing_stewIMMA <- filter(whale_fishing_stewIMMA,overlapped == TRUE)
+
+sum(fishing_stewIMMA$area_2)
+sum(whale_fishing_stewIMMA$whale_area)
+# total area of fishing in stewIMMA is 15439 sqkm2
+# overlapped area between fishing and 50% UD whale is 4761 sqkm2
+
+
+
+```
+
+
+```{r stewIMMA other}
+
+other_stewIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_other_IMMA.shp")
+
+other_stewIMMA <- as.data.frame(other_stewIMMA)
+
+other_stewIMMA <- filter (other_stewIMMA,ind<6989)
+other_stewIMMA <- filter(other_stewIMMA,z >0)
+
+other_stewIMMA$area_2<-as.numeric(other_stewIMMA$area_2)
+sum(other_stewIMMA$area_2)
+
+whale_other_stewIMMA <- full_join(x=other_stewIMMA,y=whale_stewIMMA)
+
+
+
+whale_other_stewIMMA <- whale_other_stewIMMA %>% mutate(overlapped = ifelse(z>0 & whale_ts >0,1,0))
+
+whale_other_stewIMMA$overlapped <- as.logical(whale_other_stewIMMA$overlapped)
+
+table(whale_other_stewIMMA$overlapped)
+
+whale_other_stewIMMA <- filter(whale_other_stewIMMA,overlapped == TRUE)
+
+sum(other_stewIMMA$area_2)
+sum(whale_other_stewIMMA$whale_area)
+
+# total area of other in stewIMMA is 11785 sqkm2
+# overlapped area between other and 50% UD whale is 4363 sqkm2
+
+
+```
+
+```{r stewIMMA cargo}
+cargo_stewIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_cargo_IMMA.shp")
+
+cargo_stewIMMA <- as.data.frame(cargo_stewIMMA)
+
+cargo_stewIMMA <- filter (cargo_stewIMMA,ind<6989)
+cargo_stewIMMA <- filter(cargo_stewIMMA,z >0)
+
+cargo_stewIMMA$area_2<-as.numeric(cargo_stewIMMA$area_2)
+sum(cargo_stewIMMA$area_2)
+
+whale_cargo_stewIMMA <- full_join(x=cargo_stewIMMA,y=whale_stewIMMA)
+
+
+
+whale_cargo_stewIMMA <- whale_cargo_stewIMMA %>% mutate(overlapped = ifelse(z>0 & whale_ts >0,1,0))
+
+whale_cargo_stewIMMA$overlapped <- as.logical(whale_cargo_stewIMMA$overlapped)
+
+table(whale_cargo_stewIMMA$overlapped)
+
+whale_cargo_stewIMMA <- filter(whale_cargo_stewIMMA,overlapped == TRUE)
+
+sum(cargo_stewIMMA$area_2)
+sum(whale_cargo_stewIMMA$whale_area)
+
+# total area of cargo in stewIMMA is 11795 sqkm2
+# overlapped area between cargo and 50% UD whale is 3962 sqkm2
+
+
+```
+
+
+```{r stewIMMA tanker}
+
+
+tanker_stewIMMA <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/peak_tanker_IMMA.shp")
+
+tanker_stewIMMA <- as.data.frame(tanker_stewIMMA)
+
+tanker_stewIMMA <- filter (tanker_stewIMMA,ind<6989)
+tanker_stewIMMA <- filter(tanker_stewIMMA,z >0)
+
+tanker_stewIMMA$area_2<-as.numeric(tanker_stewIMMA$area_2)
+sum(tanker_stewIMMA$area_2)
+
+whale_tanker_stewIMMA <- full_join(x=tanker_stewIMMA,y=whale_stewIMMA)
+
+
+
+whale_tanker_stewIMMA <- whale_tanker_stewIMMA %>% mutate(overlapped = ifelse(z>0 & whale_ts >0,1,0))
+
+whale_tanker_stewIMMA$overlapped <- as.logical(whale_tanker_stewIMMA$overlapped)
+
+table(whale_tanker_stewIMMA$overlapped)
+
+whale_tanker_stewIMMA <- filter(whale_tanker_stewIMMA,overlapped == TRUE)
+
+sum(tanker_stewIMMA$area_2)
+sum(whale_tanker_stewIMMA$whale_area)
+
+# total area of tanker in stewIMMA is 3120 sqkm2
+# overlapped area between tanker and 50% UD whale is 1073 sqkm2
+
+
+```

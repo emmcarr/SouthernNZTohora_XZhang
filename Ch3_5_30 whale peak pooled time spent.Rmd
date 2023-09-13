@@ -1,0 +1,134 @@
+---
+title: "5_30 whale pooled time spent"
+output: html_document
+---
+
+This script will calculate time spent using pooled whale data during peak months (June-October). So time spent per grid cell would only have one z value. 
+
+
+correct ud estimation for whales (>135E). 
+
+1: clipped in qgis 
+2: save as polygon 
+3: readOGR in R 
+4: recaclulate time spent 
+
+
+```{r}
+
+library(rgdal)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(plotly)
+library(plyr)
+library(lubridate)
+library(trip)
+
+```
+
+```{r}
+projection3851 <- CRS("+proj=lcc +lat_0=-41 +lon_0=173 +lat_1=-37.5 +lat_2=-44.5 +x_0=3000000 +y_0=7000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=km +no_defs +type=crs")
+r_g_all_3851 <- GridTopology(cellcentre.offset=c(-15,3910),cellsize=c(20,20),c(245,135))# 20km x 20km 
+
+# all location points after running the ssm model 
+load("D:/auckland/nzsrw/maps/maps/analysis/data processing/new/insideEEZ/eez_20.Rdata")
+load("D:/auckland/nzsrw/maps/maps/analysis/data processing/new/insideEEZ/eez_21.Rdata")
+load("D:/auckland/nzsrw/maps/maps/analysis/data processing/new/insideEEZ/eez_22.Rdata")
+load("D:/auckland/nzsrw/maps/maps/analysis/data processing/new/insideEEZ/eez_09.Rdata")
+
+# 13402 lcs 
+df_all <- dplyr::full_join(x=ssm_mpm_22,y=ssm_mpm_21)
+df_all <- dplyr::full_join(x=df_all,ssm_mpm_20)
+df_all <- dplyr::full_join(x=df_all,ssm_mpm_09)
+
+table(df_all$id)
+
+#remove track segments with less than 5 observations 
+df_all <-df_all  %>% subset (id != "203573-1")
+
+##For Longitude
+df_all $lon <- ifelse(df_all$lon < 0, 
+                                  df_all$lon +360, 
+                                 df_all$lon) 
+
+## still filter a bit so it is easier to make grids 
+df_all <- df_all  %>% filter (lon>135)
+
+
+# reorder column 
+# put the first four columns as lon, lat, date-time, grouping. 
+# df_all<-df_all[,c(3,4,2,1,5:18)]
+df_all<-df_all[,c(3,4,2,1,3,5:18)]#7695 lcs
+
+df_all <-df_all[,-5]# drop lon_1
+
+
+
+# categorize points to different months 
+df_all$months <- 1
+df_all$months <- strftime(df_all$date,"%m")
+
+
+```
+
+
+```{r peak months whale}
+
+# june-october only 
+peak_whale <- df_all %>% filter (months >= "06" & months <= "10")
+
+sp::coordinates(peak_whale)<- c("lon","lat")
+
+sp::proj4string(peak_whale)<-sp::CRS("+init=epsg:4326")
+
+peak_whale <- spTransform(peak_whale,CRSobj = projection3851)
+
+# make trip 
+tr_peak_whale <- trip(peak_whale,c("date","id"))
+summary(tr_peak_whale)  
+
+#Check
+plot(as.SpatialPolygons.GridTopology(r_g_all_3851))
+points(tr_peak_whale)
+
+# time spent grid 
+tg_peak_whale <- tripGrid(x=tr_peak_whale,grid = r_g_all_3851, method="pixellate")
+tg_peak_whale $z=tg_peak_whale $z/86400
+tg_peak_whale$ind <- 1:33075 
+
+# convert to spatialgriddataframe to spatialpixelsdataframe then to df
+tg_peak_whale.spdf <- as(tg_peak_whale, "SpatialPixelsDataFrame")
+tg_peak_whale.df <-as.data.frame(tg_peak_whale.spdf)
+tg_peak_whale.df$z[tg_peak_whale.df$z==0]<-NA
+
+# rank cells 
+rank_tg_peak_whale.df <- tg_peak_whale.df
+rank_tg_peak_whale.df  $rank <- rank( tg_peak_whale.df $z,na.last="keep")
+
+
+# convert to spatialpolygonsdataframe to read it in QGIS
+tg_peak_whale.poly <- as(tg_peak_whale.spdf,"SpatialPolygonsDataFrame")
+
+writeOGR(obj=tg_peak_whale.poly,dsn ="D:/auckland/nzsrw/chapter2/overlap_analysis/whale_peak_months_pooled",layer= "peak_whale",driver="ESRI Shapefile")
+
+```
+
+clipped grids to get correct UD estimation 
+
+```{r clipped}
+
+peak_whale_shp <- readOGR("D:/auckland/nzsrw/chapter2/overlap_analysis/whale_peak_months_pooled/clipped_peak_whale.shp")
+
+
+peak_whale.df <- as.data.frame(peak_whale_shp)
+peak_whale.df $z[peak_whale.df$z==0]<-NA
+
+
+peak_whale.df$rank <- rank(peak_whale.df$z,na.last="keep")
+
+# 25% ud = 802*0.25=200.5/z= 0.14165647
+# 50% ud = 802*0.5=401/z=	0.2307088
+# 75% ud = 802*0.75 = 601.5/z= 0.4405389
+
+```

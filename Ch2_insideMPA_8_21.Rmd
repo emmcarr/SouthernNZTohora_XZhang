@@ -1,0 +1,428 @@
+---
+title: "insideMPA"
+author: "Xuelei_Zhang"
+date: '2022-12-02'
+output: html_document
+---
+
+
+Table 2.3 calculate locations inside and outside MPAs 
+
+Summary:cutoff g=0.5143
+
+      Auckland                                Campbell Is                            
+      inside/outside   search/transit        inside/outside   search/transit     
+2022: 628/1737         295/333                  0/967            NA
+2021: 430/820          292/138                 31/1219           13/18
+2020: 268/332          195/73                   6/594            0/6 
+           
+     subantarctic IMMA                       Rakirua/Stewart Island       
+2022: 500/467          303/197                  17/950        0/17
+2021: 837/413          460/377                  13/1237       0/13
+2020: 378/222          269/109                  0/600          NA
+
+
+
+```{r inside=F}
+
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(rgdal)
+library(viridis)
+
+
+
+```
+
+
+```{r}
+
+MPA_whole<-read_sf("D:/auckland/nzsrw/maps/maps/proposal/marinereserves/marine-reserves.shp")
+
+
+aucklandMPA <- MPA_whole %>% subset  (OBJECTID=="67220")
+campbellMPA <-  MPA_whole %>% subset  (OBJECTID=="163562")
+
+remove(MPA_whole)
+```
+
+Auckland Island
+      Inside/outside   Search/transit 
+2022: 628/1737         295/333
+2021: 582/1084        367/215
+2020: 258/336          177/81
+2009: 309/169          213/96
+
+Campbell Island:
+      Inside/outside   Search/transit 
+2022:  31/2334          26/5
+2021:  29/1637          18/11
+2020:  6/588            0/6
+2009:  0/478            0/0
+
+```{r inside auckland is mpa 2009}
+
+load("D:/auckland/nzsrw/chapter1 07102023/2009/mpm_ssm_12h_2009.Rdata")
+
+sf_09 <- st_as_sf(mpm_ssm_12h, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+aucklandMPA<-st_transform(x=aucklandMPA,crs=4326)
+
+inside_akl_mpa_09 <- st_intersects(x=sf_09,y=aucklandMPA,sparse = F)
+table(inside_akl_mpa_09)
+
+# 309 points inside MPA 
+# 319 PTS outside
+
+# keep points only inside MPA 
+sf_09 <- sf_09%>%
+        dplyr::mutate(sf_09,inside_akl_mpa=inside_akl_mpa_09)%>%
+        filter(inside_akl_mpa_09=="TRUE")
+        
+
+# create cutoff = 0.28831 search/transit=295/333
+
+sf_09$state <- cut(sf_09$g,breaks=c(0, 0.28831,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_09$state)
+
+
+```
+
+```{r inside Auckland IS MPA 2022}
+
+ load("D:/auckland/nzsrw/chapter1 07102023/2022/ssm_mpm_22.Rdata")
+
+sf_22 <- st_as_sf(ssm_mpm_22, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+aucklandMPA<-st_transform(x=aucklandMPA,crs=4326)
+
+inside_akl_mpa_22 <- st_intersects(x=sf_22,y=aucklandMPA,sparse = F)
+table(inside_akl_mpa_22)
+
+# 628 points inside MPA 
+# 1737 PTS outside
+
+# keep points only inside MPA 
+sf_22 <- sf_22%>%
+        dplyr::mutate(sf_22,inside_akl_mpa=inside_akl_mpa_22)%>%
+        filter(inside_akl_mpa_22=="TRUE")
+        
+
+# create cutoff = 0.5143 search/transit=295/333
+
+sf_22$state <- cut(sf_22$g,breaks=c(0, 0.5143,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_22$state)
+
+
+sf::sf_use_s2(FALSE)
+
+ggplot()+
+  geom_sf(data=sf_22,size=1.5,aes(col=as.factor(state)))+
+  geom_sf(data=aucklandMPA,fill=NA)+
+  theme_bw()+
+  ggtitle("akl 2022")
+
+```
+
+```{r inside campbell IS MPA 2022}
+
+load("D:/auckland/nzsrw/chapter1 07102023/2022/ssm_mpm_22.Rdata")
+
+sf_22 <- st_as_sf(ssm_mpm_22, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+campbellMPA<-st_transform(x=campbellMPA,crs=4326)
+
+inside_cpb_mpa_22 <- st_intersects(x=sf_22,y=campbellMPA,sparse = F)
+table(inside_cpb_mpa_22)
+
+# 31 points inside MPA 
+# 2334 pts outside MPA 
+
+sf_22 <- sf_22%>%
+        dplyr::mutate(sf_22,inside_cpb_mpa=inside_cpb_mpa_22)%>%
+        filter(inside_cpb_mpa_22=="TRUE")
+        
+
+# create cutoff = 0.5143 
+
+#search/transit=26/5
+
+sf_22$state <- cut(sf_22$g,breaks=c(0,0.5143,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_22$state)
+
+```
+
+```{r inside Auckland IS MPA 2021}
+
+load("D:/auckland/nzsrw/chapter1 07102023/2021/ssm_mpm_21.Rdata")
+
+sf_21 <- st_as_sf(ssm_mpm_21, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+aucklandMPA<-st_transform(x=aucklandMPA,crs=4326)
+
+inside_akl_mpa_21 <- st_intersects(x=sf_21,y=aucklandMPA,sparse = F)
+table(inside_akl_mpa_21)
+
+# 1666 inside the eez 
+# 582 points inside MPA 
+# 1084 PTS outside
+
+# keep points only inside eez 
+sf_21 <- sf_21%>%
+        dplyr::mutate(sf_21,inside_akl_mpa=inside_akl_mpa_21)%>%
+        filter(inside_akl_mpa_21=="TRUE")
+        
+
+# create cutoff = 0.5143
+# search/transit= 367/215
+
+sf_21$state <- cut(sf_21$g,breaks=c(0,0.5143,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_21$state)
+
+
+sf::sf_use_s2(FALSE)
+
+ggplot()+
+  geom_sf(data=sf_21,size=1.5,aes(col=as.factor(state)))+
+  geom_sf(data=aucklandMPA,fill=NA)+
+  theme_bw()+
+  ggtitle("akl 2021")
+
+```
+
+```{r inside campbell IS MPA 2021}
+
+load("D:/auckland/nzsrw/chapter1 07102023/2021/ssm_mpm_21.Rdata")
+
+sf_21 <- st_as_sf(ssm_mpm_21, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+campbellMPA<-st_transform(x=campbellMPA,crs=4326)
+
+inside_cpb_mpa_21 <- st_intersects(x=sf_21,y=campbellMPA,sparse = F)
+table(inside_cpb_mpa_21)
+
+# 29 points inside MPA 
+# 1637 PTS outside
+
+# keep points only inside eez 
+sf_21 <- sf_21%>%
+        dplyr::mutate(sf_21,inside_cpb_mpa=inside_cpb_mpa_21)%>%
+        filter(inside_cpb_mpa_21=="TRUE")
+        
+
+# create cutoff = 0.5143 search/transit=18/11
+
+sf_21$state <- cut(sf_21$g,breaks=c(0,0.5143,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_21$state)
+
+
+sf::sf_use_s2(FALSE)
+
+ggplot()+
+  geom_sf(data=sf_21,size=1.5,aes(col=as.factor(state)))+
+  geom_sf(data=campbellMPA,fill=NA)+
+  theme_bw()+
+  ggtitle("cpb 2021")
+
+```
+
+```{r inside Auckland IS MPA 2020}
+
+load("D:/auckland/nzsrw/chapter1 07102023/2020/ssm_mpm_20.Rdata")
+
+sf_20 <- st_as_sf(ssm_mpm_20, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 4326)
+
+aucklandMPA<-st_transform(x=aucklandMPA,crs=4326)
+
+inside_akl_mpa_20 <- st_intersects(x=sf_20,y=aucklandMPA,sparse = F)
+table(inside_akl_mpa_20)
+
+# 594 inside the eez
+# 258 points inside MPA 
+# 336 PTS outside
+
+# keep points only inside eez 
+sf_20 <- sf_20%>%
+        dplyr::mutate(sf_20,inside_akl_mpa=inside_akl_mpa_20)%>%
+        filter(inside_akl_mpa_20=="TRUE")
+        
+
+# create cutoff = 0.5143 search/transit= 177/81
+
+sf_20$state <- cut(sf_20$g,breaks=c(0,0.5143,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_20$state)
+
+
+sf::sf_use_s2(FALSE)
+
+ggplot()+
+  geom_sf(data=sf_20,size=1.5,aes(col=as.factor(state)))+
+  geom_sf(data=aucklandMPA,fill=NA)+
+  theme_bw()+
+  ggtitle("akl 2020")
+
+```
+
+```{r inside campbell IS MPA 2020}
+
+load("D:/auckland/nzsrw/chapter1 07102023/2020/ssm_mpm_20.Rdata")
+
+sf_20 <- st_as_sf(ssm_mpm_20, coords = c("lon", "lat"), 
+    crs=4326) #%>% 
+    #st_transform(crs=9191)
+
+campbellMPA<-st_transform(x=campbellMPA,crs=4326)
+
+inside_cpb_mpa_20 <- st_intersects(x=sf_20,y=campbellMPA,sparse = F)
+table(inside_cpb_mpa_20 )
+
+# 594 pts outside campbell is MPA
+# 6 inside 
+# 588 outside MPA
+
+sf_20 <- sf_20%>%
+        dplyr::mutate(sf_20,inside_cpb_mpa_20=inside_cpb_mpa_20)%>%
+        filter(inside_cpb_mpa_20=="TRUE")
+        
+# create cutoff = 0.5143 search/transit=0/6
+
+sf_20$state <- cut(sf_20$g,breaks=c(0,0.5143,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_20$state)
+
+ggplot()+
+  geom_sf(data=sf_20,size=1.5,aes(col=as.factor(state)))+
+  geom_sf(data=campbellMPA,fill=NA)+
+  theme_bw()
+
+```
+
+
+# 2022: inside/outside 1653/712 search/transit = 1087/566
+# 2021: 1056/610;470/586
+# 2020: 377/217; 261/116
+# 2009: 367/111; 237/130 cutoff=0.28831; substantially lower than other years
+
+
+```{r New Zealand Subantarctic Islands IMMA 2022 2021 2020}
+
+
+IMMA <- readOGR("D:/auckland/nzsrw/maps/maps/proposal/imma/iucn-imma.shp")
+IMMA<-st_as_sf(IMMA,crs=4326)
+
+# subset subantarctic IMMA and Rakiura Stewart Island IMMA
+subIMMA<-IMMA%>% subset(Ident.Code == "07EXSOOC182020IMMA")
+
+stewIMMA <-IMMA%>% subset( Ident.Code =="21ANSEIO202020IMMA")
+
+remove(IMMA)
+
+load("D:/auckland/nzsrw/chapter1 07102023/2022/ssm_mpm_22.Rdata")
+
+sf_09 <- st_as_sf(mpm_ssm_12h, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+inside_subIMMA_09 <- st_intersects(x=sf_09,y=subIMMA,sparse = F)
+table(inside_subIMMA_09)
+
+# 2022: inside/outside 1653/712 search/transit = 1087/566
+# 2021: 1056/610;470/586
+# 2020: 377/217; 261/116
+# 2009: 367/111; 237/130
+
+# keep points only inside sub IMMA 
+sf_09<- sf_09%>%
+        dplyr::mutate(sf_09,inside_subIMMA_09=inside_subIMMA_09)%>%
+        filter(inside_subIMMA_09=="TRUE")
+
+sf_09$state <- cut(sf_09$g,breaks=c(0,0.28831,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_09$state) 
+
+sf::sf_use_s2(FALSE)
+
+ggplot()+
+  geom_sf(data=sf_22,size=1,alpha=0.5,aes(col=as.factor(state)))+
+  geom_sf(data=subIMMA,fill=NA)+
+  theme_bw()+
+  ggtitle("subIMMA 2022")
+
+
+```
+
+# inside/outsie  0/478   search/transit = 0/0 2009 
+# inside/outside 0/594   search/transit = 0/0 2020
+# inside/outside 16/1650 search/transit = 0/16 2021
+# inside/outside 15/2350 search/transit=0/15  2022
+
+
+```{r}
+
+load("D:/auckland/nzsrw/chapter1 07102023/2022/ssm_mpm_22.Rdata")
+load("D:/auckland/nzsrw/chapter1 07102023/2021/ssm_mpm_21.Rdata")
+load("D:/auckland/nzsrw/chapter1 07102023/2020/ssm_mpm_20.Rdata")
+load("D:/auckland/nzsrw/chapter1 07102023/2009/ssm_mpm_12h_names_2009.Rdata")
+
+sf_22 <- st_as_sf(ssm_mpm_22, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+sf_21 <- st_as_sf(ssm_mpm_21, coords = c("lon", "lat"), 
+    crs = 4326) #%>% 
+    #st_transform(crs= 3851)
+
+
+inside_stewIMMA_21 <- st_intersects(x=sf_21,y=stewIMMA,sparse = F)
+table(inside_stewIMMA_21)
+
+
+# inside/outsie  0/478   search/transit = 0/0 2009 
+# inside/outside 0/594   search/transit = 0/0 2020
+# inside/outside 16/1650 search/transit = 0/16 2021
+# inside/outside 15/2350 search/transit=0/15  2022
+
+# keep points only inside sub IMMA 
+sf_21 <- sf_21%>%
+        dplyr::mutate(sf_21,inside_stewIMMA_21=inside_stewIMMA_21)%>%
+        filter(inside_stewIMMA_21=="TRUE")
+
+sf_21 <- sf_21[-17]
+
+
+sf_21$state <- cut(sf_21$g,breaks=c(0,0.52,1),labels=c("search","transit"),include.lowest=TRUE)
+
+table(sf_21$state)
+
+sf::sf_use_s2(FALSE)
+
+ggplot()+
+  geom_sf(data=sf_22,size=1,alpha=0.5,aes(col=as.factor(state)))+
+  geom_sf(data=subIMMA,fill=NA)+
+  theme_bw()+
+  ggtitle("subIMMA 2022")
+
+save(sf_21, file = "G:/auckland/nz_right_whale/maps/analysis/data processing/new/insideMPA/sf.21.stew.Rdata")
+
+```
